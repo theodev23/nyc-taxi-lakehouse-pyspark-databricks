@@ -136,6 +136,10 @@ def download_source_file(
     destination_dir.mkdir(parents=True, exist_ok=True)
 
     destination_path = destination_dir / source_file.filename
+
+    if validate_local_source_file(source_file, destination_path):
+        return destination_path
+
     temporary_path = destination_path.with_name(f"{destination_path.name}.part")
     bytes_written = 0
 

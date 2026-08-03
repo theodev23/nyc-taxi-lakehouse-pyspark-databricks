@@ -176,6 +176,50 @@ def test_validate_local_source_file_checks_sha256(
     assert not validate_local_source_file(source_file, file_path)
 
 
+def test_download_source_file_reuses_valid_local_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A valid local source should be reused without network access."""
+    payload = b"already-downloaded"
+    destination_dir = tmp_path / "landing"
+    destination_dir.mkdir()
+
+    destination_path = destination_dir / "source.parquet"
+    destination_path.write_bytes(payload)
+
+    source_file = replace(
+        load_source_files(PROJECT_MANIFEST_PATH)[0],
+        filename=destination_path.name,
+        content_length_bytes=len(payload),
+        sha256=calculate_sha256(destination_path),
+    )
+
+    def unexpected_urlopen(
+        url: str,
+        timeout: float,
+    ) -> BytesIO:
+        raise AssertionError(
+            f"Network access was not expected: url={url}, timeout={timeout}"
+        )
+
+    monkeypatch.setattr(
+        "taxi_lakehouse.data_acquisition.urlopen",
+        unexpected_urlopen,
+    )
+
+    result = download_source_file(
+        source_file,
+        destination_dir,
+        chunk_size=4,
+        timeout_seconds=5.0,
+    )
+
+    assert result == destination_path
+    assert result.read_bytes() == payload
+    assert not Path(f"{destination_path}.part").exists()
+
+
 def test_download_source_file_writes_validated_file(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
