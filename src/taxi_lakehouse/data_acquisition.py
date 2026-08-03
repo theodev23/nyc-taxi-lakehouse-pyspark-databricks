@@ -4,7 +4,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.request import urlopen
 
 
@@ -62,6 +62,19 @@ class SourceFile:
             sha256=value["sha256"],
             downloaded_at_utc=value["downloaded_at_utc"],
         )
+
+
+@dataclass(frozen=True, slots=True)
+class AcquisitionResult:
+    """Outcome of acquiring one source file."""
+
+    source_file: SourceFile
+    file_path: Path
+    action: Literal[
+        "downloaded",
+        "metadata_recorded",
+        "reused",
+    ]
 
 
 def load_source_files(manifest_path: Path) -> tuple[SourceFile, ...]:
@@ -237,3 +250,58 @@ def download_source_file(
         raise
 
     return destination_path
+
+
+def acquire_source_file(
+    manifest_path: Path,
+    source_file: SourceFile,
+    destination_dir: Path,
+    downloaded_at_utc: str,
+    chunk_size: int = 1024 * 1024,
+    timeout_seconds: float = 60.0,
+) -> AcquisitionResult:
+    """Acquire one source and persist missing download metadata."""
+    if not downloaded_at_utc:
+        raise ValueError("downloaded_at_utc must be a non-empty string.")
+
+    destination_path = destination_dir / source_file.filename
+
+    was_valid = validate_local_source_file(
+        source_file,
+        destination_path,
+    )
+    metadata_is_complete = (
+        source_file.sha256 is not None and source_file.downloaded_at_utc is not None
+    )
+
+    file_path = download_source_file(
+        source_file,
+        destination_dir,
+        chunk_size=chunk_size,
+        timeout_seconds=timeout_seconds,
+    )
+
+    if was_valid and metadata_is_complete:
+        return AcquisitionResult(
+            source_file=source_file,
+            file_path=file_path,
+            action="reused",
+        )
+
+    updated_source_file = record_download_metadata(
+        manifest_path,
+        source_file,
+        file_path,
+        downloaded_at_utc,
+    )
+
+    action: Literal[
+        "downloaded",
+        "metadata_recorded",
+    ] = "metadata_recorded" if was_valid else "downloaded"
+
+    return AcquisitionResult(
+        source_file=updated_source_file,
+        file_path=file_path,
+        action=action,
+    )

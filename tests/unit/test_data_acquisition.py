@@ -8,7 +8,9 @@ from pathlib import Path
 import pytest
 
 from taxi_lakehouse.data_acquisition import (
+    AcquisitionResult,
     SourceFile,
+    acquire_source_file,
     calculate_sha256,
     download_source_file,
     load_source_files,
@@ -372,3 +374,162 @@ def test_download_source_file_removes_invalid_partial_file(
 
     assert not destination_path.exists()
     assert not temporary_path.exists()
+
+
+def test_acquire_source_file_downloads_and_records_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A missing source should be downloaded and recorded."""
+    payload = b"download-and-record"
+    manifest = json.loads(PROJECT_MANIFEST_PATH.read_text(encoding="utf-8"))
+    manifest["files"][0]["content_length_bytes"] = len(payload)
+
+    manifest_path = tmp_path / "source_manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    source_file = load_source_files(manifest_path)[0]
+    destination_dir = tmp_path / "landing"
+
+    def fake_urlopen(
+        url: str,
+        timeout: float,
+    ) -> BytesIO:
+        assert url == source_file.url
+        assert timeout == 5.0
+        return BytesIO(payload)
+
+    monkeypatch.setattr(
+        "taxi_lakehouse.data_acquisition.urlopen",
+        fake_urlopen,
+    )
+
+    result = acquire_source_file(
+        manifest_path,
+        source_file,
+        destination_dir,
+        "2026-08-03T08:30:00Z",
+        chunk_size=4,
+        timeout_seconds=5.0,
+    )
+
+    persisted_source_file = load_source_files(manifest_path)[0]
+
+    assert isinstance(result, AcquisitionResult)
+    assert result.action == "downloaded"
+    assert result.file_path.read_bytes() == payload
+    assert result.source_file == persisted_source_file
+    assert result.source_file.sha256 == calculate_sha256(result.file_path)
+    assert result.source_file.downloaded_at_utc == "2026-08-03T08:30:00Z"
+    assert not Path(f"{result.file_path}.part").exists()
+
+
+def test_acquire_source_file_records_missing_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Existing size-valid data should receive metadata."""
+    payload = b"existing-without-metadata"
+    manifest = json.loads(PROJECT_MANIFEST_PATH.read_text(encoding="utf-8"))
+    manifest["files"][0]["content_length_bytes"] = len(payload)
+
+    manifest_path = tmp_path / "source_manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    source_file = load_source_files(manifest_path)[0]
+    destination_dir = tmp_path / "landing"
+    destination_dir.mkdir()
+
+    destination_path = destination_dir / source_file.filename
+    destination_path.write_bytes(payload)
+
+    def unexpected_urlopen(
+        url: str,
+        timeout: float,
+    ) -> BytesIO:
+        raise AssertionError(
+            f"Network access was not expected: url={url}, timeout={timeout}"
+        )
+
+    monkeypatch.setattr(
+        "taxi_lakehouse.data_acquisition.urlopen",
+        unexpected_urlopen,
+    )
+
+    result = acquire_source_file(
+        manifest_path,
+        source_file,
+        destination_dir,
+        "2026-08-03T08:35:00Z",
+        chunk_size=4,
+        timeout_seconds=5.0,
+    )
+
+    persisted_source_file = load_source_files(manifest_path)[0]
+
+    assert result.action == "metadata_recorded"
+    assert result.file_path == destination_path
+    assert result.source_file == persisted_source_file
+    assert result.source_file.sha256 == calculate_sha256(destination_path)
+    assert result.source_file.downloaded_at_utc == "2026-08-03T08:35:00Z"
+
+
+def test_acquire_source_file_reuses_complete_source(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Complete local data should remain unchanged."""
+    payload = b"fully-recorded-source"
+    manifest = json.loads(PROJECT_MANIFEST_PATH.read_text(encoding="utf-8"))
+    manifest["files"][0]["content_length_bytes"] = len(payload)
+
+    destination_dir = tmp_path / "landing"
+    destination_dir.mkdir()
+
+    destination_path = destination_dir / manifest["files"][0]["filename"]
+    destination_path.write_bytes(payload)
+
+    manifest["files"][0]["sha256"] = calculate_sha256(destination_path)
+    manifest["files"][0]["downloaded_at_utc"] = "2026-08-03T08:00:00Z"
+
+    manifest_path = tmp_path / "source_manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    original_manifest = manifest_path.read_text(encoding="utf-8")
+
+    source_file = load_source_files(manifest_path)[0]
+
+    def unexpected_urlopen(
+        url: str,
+        timeout: float,
+    ) -> BytesIO:
+        raise AssertionError(
+            f"Network access was not expected: url={url}, timeout={timeout}"
+        )
+
+    monkeypatch.setattr(
+        "taxi_lakehouse.data_acquisition.urlopen",
+        unexpected_urlopen,
+    )
+
+    result = acquire_source_file(
+        manifest_path,
+        source_file,
+        destination_dir,
+        "2026-08-03T08:40:00Z",
+        chunk_size=4,
+        timeout_seconds=5.0,
+    )
+
+    assert result.action == "reused"
+    assert result.source_file == source_file
+    assert result.file_path == destination_path
+    assert manifest_path.read_text(encoding="utf-8") == original_manifest
