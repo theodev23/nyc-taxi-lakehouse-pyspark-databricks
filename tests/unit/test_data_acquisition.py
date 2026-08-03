@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from taxi_lakehouse.data_acquisition import SourceFile, load_source_files
+from taxi_lakehouse.data_acquisition import (
+    SourceFile,
+    calculate_sha256,
+    load_source_files,
+)
 
 PROJECT_MANIFEST_PATH = Path("data/source_manifest.json")
 
@@ -74,3 +78,29 @@ def test_load_source_files_rejects_unknown_schema(
         match="Unsupported source manifest schema version",
     ):
         load_source_files(manifest_path)
+
+
+def test_calculate_sha256_reads_file_in_chunks(
+    tmp_path: Path,
+) -> None:
+    """The checksum should match a known SHA-256 digest."""
+    file_path = tmp_path / "source.bin"
+    file_path.write_bytes(b"nyc-tlc\n")
+
+    assert calculate_sha256(file_path, chunk_size=3) == (
+        "534c7d3822b4fae29cfdf088cfbb8ad792a34a05861fac0ccd88700a1fd5eb59"
+    )
+
+
+def test_calculate_sha256_rejects_invalid_chunk_size(
+    tmp_path: Path,
+) -> None:
+    """A non-positive chunk size should fail before reading the file."""
+    file_path = tmp_path / "source.bin"
+    file_path.write_bytes(b"data")
+
+    with pytest.raises(
+        ValueError,
+        match="chunk_size must be positive",
+    ):
+        calculate_sha256(file_path, chunk_size=0)

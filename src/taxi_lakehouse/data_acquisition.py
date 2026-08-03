@@ -1,5 +1,6 @@
 """Utilities for acquiring versioned NYC TLC source files."""
 
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -82,3 +83,20 @@ def load_source_files(manifest_path: Path) -> tuple[SourceFile, ...]:
         raise ValueError("Source manifest contains duplicate filenames.")
 
     return source_files
+
+
+def calculate_sha256(
+    file_path: Path,
+    chunk_size: int = 1024 * 1024,
+) -> str:
+    """Calculate the SHA-256 checksum of a local file."""
+    if chunk_size <= 0:
+        raise ValueError("SHA-256 chunk_size must be positive.")
+
+    digest = hashlib.sha256()
+
+    with file_path.open("rb") as source:
+        for chunk in iter(lambda: source.read(chunk_size), b""):
+            digest.update(chunk)
+
+    return digest.hexdigest()
