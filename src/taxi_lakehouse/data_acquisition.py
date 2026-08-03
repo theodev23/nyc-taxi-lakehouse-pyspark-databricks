@@ -5,6 +5,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.request import urlopen
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,3 +101,48 @@ def calculate_sha256(
             digest.update(chunk)
 
     return digest.hexdigest()
+
+
+def download_source_file(
+    source_file: SourceFile,
+    destination_dir: Path,
+    chunk_size: int = 1024 * 1024,
+    timeout_seconds: float = 60.0,
+) -> Path:
+    """Download one source file through an atomic temporary file."""
+    if chunk_size <= 0:
+        raise ValueError("Download chunk_size must be positive.")
+
+    if timeout_seconds <= 0:
+        raise ValueError("Download timeout_seconds must be positive.")
+
+    destination_dir.mkdir(parents=True, exist_ok=True)
+
+    destination_path = destination_dir / source_file.filename
+    temporary_path = destination_path.with_name(f"{destination_path.name}.part")
+    bytes_written = 0
+
+    try:
+        with urlopen(
+            source_file.url,
+            timeout=timeout_seconds,
+        ) as response:
+            with temporary_path.open("wb") as destination:
+                while chunk := response.read(chunk_size):
+                    destination.write(chunk)
+                    bytes_written += len(chunk)
+
+        if bytes_written != source_file.content_length_bytes:
+            raise ValueError(
+                "Downloaded byte count does not match manifest: "
+                f"expected={source_file.content_length_bytes}, "
+                f"actual={bytes_written}, "
+                f"filename={source_file.filename!r}."
+            )
+
+        temporary_path.replace(destination_path)
+    except Exception:
+        temporary_path.unlink(missing_ok=True)
+        raise
+
+    return destination_path

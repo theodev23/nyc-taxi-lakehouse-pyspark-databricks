@@ -1,6 +1,8 @@
 """Tests for NYC TLC source acquisition utilities."""
 
 import json
+from dataclasses import replace
+from io import BytesIO
 from pathlib import Path
 
 import pytest
@@ -8,6 +10,7 @@ import pytest
 from taxi_lakehouse.data_acquisition import (
     SourceFile,
     calculate_sha256,
+    download_source_file,
     load_source_files,
 )
 
@@ -104,3 +107,81 @@ def test_calculate_sha256_rejects_invalid_chunk_size(
         match="chunk_size must be positive",
     ):
         calculate_sha256(file_path, chunk_size=0)
+
+
+def test_download_source_file_writes_validated_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A complete download should replace its temporary file."""
+    payload = b"nyc-tlc-download"
+    source_file = replace(
+        load_source_files(PROJECT_MANIFEST_PATH)[0],
+        content_length_bytes=len(payload),
+    )
+
+    def fake_urlopen(
+        url: str,
+        timeout: float,
+    ) -> BytesIO:
+        assert url == source_file.url
+        assert timeout == 5.0
+        return BytesIO(payload)
+
+    monkeypatch.setattr(
+        "taxi_lakehouse.data_acquisition.urlopen",
+        fake_urlopen,
+    )
+
+    destination_path = download_source_file(
+        source_file,
+        tmp_path,
+        chunk_size=4,
+        timeout_seconds=5.0,
+    )
+
+    assert destination_path == tmp_path / source_file.filename
+    assert destination_path.read_bytes() == payload
+    assert not Path(f"{destination_path}.part").exists()
+
+
+def test_download_source_file_removes_invalid_partial_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A size mismatch should leave neither final nor partial data."""
+    payload = b"incomplete"
+    source_file = replace(
+        load_source_files(PROJECT_MANIFEST_PATH)[0],
+        content_length_bytes=len(payload) + 1,
+    )
+
+    def fake_urlopen(
+        url: str,
+        timeout: float,
+    ) -> BytesIO:
+        assert url == source_file.url
+        assert timeout == 5.0
+        return BytesIO(payload)
+
+    monkeypatch.setattr(
+        "taxi_lakehouse.data_acquisition.urlopen",
+        fake_urlopen,
+    )
+
+    destination_path = tmp_path / source_file.filename
+    temporary_path = Path(f"{destination_path}.part")
+
+    with pytest.raises(
+        ValueError,
+        match="Downloaded byte count does not match manifest",
+    ):
+        download_source_file(
+            source_file,
+            tmp_path,
+            chunk_size=4,
+            timeout_seconds=5.0,
+        )
+
+    assert not destination_path.exists()
+    assert not temporary_path.exists()
