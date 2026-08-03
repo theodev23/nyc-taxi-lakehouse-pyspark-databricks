@@ -12,6 +12,7 @@ from taxi_lakehouse.data_acquisition import (
     calculate_sha256,
     download_source_file,
     load_source_files,
+    validate_local_source_file,
 )
 
 PROJECT_MANIFEST_PATH = Path("data/source_manifest.json")
@@ -107,6 +108,72 @@ def test_calculate_sha256_rejects_invalid_chunk_size(
         match="chunk_size must be positive",
     ):
         calculate_sha256(file_path, chunk_size=0)
+
+
+def test_validate_local_source_file_rejects_missing_file(
+    tmp_path: Path,
+) -> None:
+    """A missing source file should not be considered valid."""
+    source_file = load_source_files(PROJECT_MANIFEST_PATH)[0]
+
+    assert not validate_local_source_file(
+        source_file,
+        tmp_path / source_file.filename,
+    )
+
+
+def test_validate_local_source_file_rejects_size_mismatch(
+    tmp_path: Path,
+) -> None:
+    """A local file with an unexpected size should be rejected."""
+    file_path = tmp_path / "source.parquet"
+    file_path.write_bytes(b"short")
+
+    source_file = replace(
+        load_source_files(PROJECT_MANIFEST_PATH)[0],
+        content_length_bytes=len(b"expected"),
+    )
+
+    assert not validate_local_source_file(source_file, file_path)
+
+
+def test_validate_local_source_file_accepts_matching_size(
+    tmp_path: Path,
+) -> None:
+    """Size validation should succeed before checksums are available."""
+    payload = b"size-only-validation"
+    file_path = tmp_path / "source.parquet"
+    file_path.write_bytes(payload)
+
+    source_file = replace(
+        load_source_files(PROJECT_MANIFEST_PATH)[0],
+        content_length_bytes=len(payload),
+        sha256=None,
+    )
+
+    assert validate_local_source_file(source_file, file_path)
+
+
+def test_validate_local_source_file_checks_sha256(
+    tmp_path: Path,
+) -> None:
+    """A recorded checksum should detect corrupted local content."""
+    payload = b"checksum-validation"
+    file_path = tmp_path / "source.parquet"
+    file_path.write_bytes(payload)
+
+    source_file = replace(
+        load_source_files(PROJECT_MANIFEST_PATH)[0],
+        content_length_bytes=len(payload),
+        sha256=calculate_sha256(file_path),
+    )
+
+    assert validate_local_source_file(source_file, file_path)
+
+    file_path.write_bytes(b"corrupted-content!!")
+
+    assert file_path.stat().st_size == source_file.content_length_bytes
+    assert not validate_local_source_file(source_file, file_path)
 
 
 def test_download_source_file_writes_validated_file(

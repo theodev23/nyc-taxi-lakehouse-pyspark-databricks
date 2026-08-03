@@ -103,6 +103,23 @@ def calculate_sha256(
     return digest.hexdigest()
 
 
+def validate_local_source_file(
+    source_file: SourceFile,
+    file_path: Path,
+) -> bool:
+    """Return whether a local file matches its manifest metadata."""
+    if not file_path.is_file():
+        return False
+
+    if file_path.stat().st_size != source_file.content_length_bytes:
+        return False
+
+    if source_file.sha256 is None:
+        return True
+
+    return calculate_sha256(file_path) == source_file.sha256
+
+
 def download_source_file(
     source_file: SourceFile,
     destination_dir: Path,
