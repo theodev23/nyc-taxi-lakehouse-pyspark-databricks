@@ -12,6 +12,7 @@ from taxi_lakehouse.data_acquisition import (
     calculate_sha256,
     download_source_file,
     load_source_files,
+    record_download_metadata,
     validate_local_source_file,
 )
 
@@ -174,6 +175,81 @@ def test_validate_local_source_file_checks_sha256(
 
     assert file_path.stat().st_size == source_file.content_length_bytes
     assert not validate_local_source_file(source_file, file_path)
+
+
+def test_record_download_metadata_updates_manifest(
+    tmp_path: Path,
+) -> None:
+    """Download metadata should be persisted atomically."""
+    payload = b"manifest-metadata"
+    manifest = json.loads(PROJECT_MANIFEST_PATH.read_text(encoding="utf-8"))
+    manifest["files"][0]["content_length_bytes"] = len(payload)
+
+    manifest_path = tmp_path / "source_manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    source_file = load_source_files(manifest_path)[0]
+    file_path = tmp_path / source_file.filename
+    file_path.write_bytes(payload)
+
+    downloaded_at_utc = "2026-08-03T08:15:00Z"
+
+    updated_source_file = record_download_metadata(
+        manifest_path,
+        source_file,
+        file_path,
+        downloaded_at_utc,
+    )
+
+    updated_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    updated_entry = updated_manifest["files"][0]
+
+    assert updated_source_file.sha256 == calculate_sha256(file_path)
+    assert updated_source_file.downloaded_at_utc == downloaded_at_utc
+    assert updated_entry["sha256"] == updated_source_file.sha256
+    assert updated_entry["downloaded_at_utc"] == downloaded_at_utc
+    assert updated_manifest["files"][1]["sha256"] is None
+    assert validate_local_source_file(
+        updated_source_file,
+        file_path,
+    )
+    assert not Path(f"{manifest_path}.tmp").exists()
+
+
+def test_record_download_metadata_rejects_size_mismatch(
+    tmp_path: Path,
+) -> None:
+    """Invalid local data should not modify the manifest."""
+    manifest = json.loads(PROJECT_MANIFEST_PATH.read_text(encoding="utf-8"))
+    manifest["files"][0]["content_length_bytes"] = len(b"expected")
+
+    manifest_path = tmp_path / "source_manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    original_manifest = manifest_path.read_text(encoding="utf-8")
+
+    source_file = load_source_files(manifest_path)[0]
+    file_path = tmp_path / source_file.filename
+    file_path.write_bytes(b"short")
+
+    with pytest.raises(
+        ValueError,
+        match="Local source byte count does not match manifest",
+    ):
+        record_download_metadata(
+            manifest_path,
+            source_file,
+            file_path,
+            "2026-08-03T08:15:00Z",
+        )
+
+    assert manifest_path.read_text(encoding="utf-8") == original_manifest
+    assert not Path(f"{manifest_path}.tmp").exists()
 
 
 def test_download_source_file_reuses_valid_local_file(

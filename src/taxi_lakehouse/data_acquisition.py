@@ -120,6 +120,76 @@ def validate_local_source_file(
     return calculate_sha256(file_path) == source_file.sha256
 
 
+def record_download_metadata(
+    manifest_path: Path,
+    source_file: SourceFile,
+    file_path: Path,
+    downloaded_at_utc: str,
+) -> SourceFile:
+    """Record a local source checksum and download timestamp."""
+    if not downloaded_at_utc:
+        raise ValueError("downloaded_at_utc must be a non-empty string.")
+
+    if not file_path.is_file():
+        raise FileNotFoundError(f"Local source file does not exist: {file_path}.")
+
+    actual_size = file_path.stat().st_size
+
+    if actual_size != source_file.content_length_bytes:
+        raise ValueError(
+            "Local source byte count does not match manifest: "
+            f"expected={source_file.content_length_bytes}, "
+            f"actual={actual_size}, "
+            f"filename={source_file.filename!r}."
+        )
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    raw_files = manifest.get("files")
+
+    if not isinstance(raw_files, list):
+        raise ValueError("Source manifest must contain a files list.")
+
+    matching_files = [
+        raw_file
+        for raw_file in raw_files
+        if isinstance(raw_file, dict)
+        and raw_file.get("filename") == source_file.filename
+    ]
+
+    if len(matching_files) != 1:
+        raise ValueError(
+            "Source manifest must contain exactly one matching filename: "
+            f"{source_file.filename!r}."
+        )
+
+    raw_source_file = matching_files[0]
+    manifest_source_file = SourceFile.from_mapping(raw_source_file)
+
+    if (
+        manifest_source_file.url != source_file.url
+        or manifest_source_file.content_length_bytes != source_file.content_length_bytes
+    ):
+        raise ValueError("Local source metadata does not match the manifest entry.")
+
+    raw_source_file["sha256"] = calculate_sha256(file_path)
+    raw_source_file["downloaded_at_utc"] = downloaded_at_utc
+
+    updated_source_file = SourceFile.from_mapping(raw_source_file)
+    temporary_path = manifest_path.with_name(f"{manifest_path.name}.tmp")
+
+    try:
+        temporary_path.write_text(
+            json.dumps(manifest, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        temporary_path.replace(manifest_path)
+    except Exception:
+        temporary_path.unlink(missing_ok=True)
+        raise
+
+    return updated_source_file
+
+
 def download_source_file(
     source_file: SourceFile,
     destination_dir: Path,
