@@ -305,3 +305,29 @@ def acquire_source_file(
         file_path=file_path,
         action=action,
     )
+
+
+def acquire_source_files(
+    manifest_path: Path,
+    destination_dir: Path,
+    downloaded_at_utc: str,
+    chunk_size: int = 1024 * 1024,
+    timeout_seconds: float = 60.0,
+) -> tuple[AcquisitionResult, ...]:
+    """Acquire every source file declared in a manifest."""
+    if not downloaded_at_utc:
+        raise ValueError("downloaded_at_utc must be a non-empty string.")
+
+    source_files = load_source_files(manifest_path)
+
+    return tuple(
+        acquire_source_file(
+            manifest_path,
+            source_file,
+            destination_dir,
+            downloaded_at_utc,
+            chunk_size=chunk_size,
+            timeout_seconds=timeout_seconds,
+        )
+        for source_file in source_files
+    )

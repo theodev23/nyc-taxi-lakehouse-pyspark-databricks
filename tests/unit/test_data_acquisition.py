@@ -11,6 +11,7 @@ from taxi_lakehouse.data_acquisition import (
     AcquisitionResult,
     SourceFile,
     acquire_source_file,
+    acquire_source_files,
     calculate_sha256,
     download_source_file,
     load_source_files,
@@ -532,4 +533,132 @@ def test_acquire_source_file_reuses_complete_source(
     assert result.action == "reused"
     assert result.source_file == source_file
     assert result.file_path == destination_path
+    assert manifest_path.read_text(encoding="utf-8") == original_manifest
+
+
+def test_acquire_source_files_processes_manifest_in_order(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Batch acquisition should follow manifest order."""
+    manifest = json.loads(PROJECT_MANIFEST_PATH.read_text(encoding="utf-8"))
+    manifest["files"] = manifest["files"][:2]
+
+    payload_by_url: dict[str, bytes] = {}
+
+    for index, raw_source_file in enumerate(
+        manifest["files"],
+        start=1,
+    ):
+        payload = f"batch-source-{index}".encode()
+        raw_source_file["content_length_bytes"] = len(payload)
+        raw_source_file["sha256"] = None
+        raw_source_file["downloaded_at_utc"] = None
+        payload_by_url[raw_source_file["url"]] = payload
+
+    manifest_path = tmp_path / "source_manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+    destination_dir = tmp_path / "landing"
+
+    def fake_urlopen(
+        url: str,
+        timeout: float,
+    ) -> BytesIO:
+        assert timeout == 5.0
+        return BytesIO(payload_by_url[url])
+
+    monkeypatch.setattr(
+        "taxi_lakehouse.data_acquisition.urlopen",
+        fake_urlopen,
+    )
+
+    results = acquire_source_files(
+        manifest_path,
+        destination_dir,
+        "2026-08-03T08:45:00Z",
+        chunk_size=4,
+        timeout_seconds=5.0,
+    )
+
+    persisted_source_files = load_source_files(manifest_path)
+
+    assert tuple(result.action for result in results) == (
+        "downloaded",
+        "downloaded",
+    )
+    assert tuple(result.source_file.filename for result in results) == tuple(
+        raw_source_file["filename"] for raw_source_file in manifest["files"]
+    )
+    assert tuple(result.source_file for result in results) == persisted_source_files
+
+    for result in results:
+        expected_payload = payload_by_url[result.source_file.url]
+
+        assert result.file_path.read_bytes() == expected_payload
+        assert result.source_file.sha256 == calculate_sha256(result.file_path)
+        assert result.source_file.downloaded_at_utc == "2026-08-03T08:45:00Z"
+        assert not Path(f"{result.file_path}.part").exists()
+
+
+def test_acquire_source_files_reuses_complete_manifest(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A complete batch should be fully reusable."""
+    manifest = json.loads(PROJECT_MANIFEST_PATH.read_text(encoding="utf-8"))
+    manifest["files"] = manifest["files"][:2]
+
+    destination_dir = tmp_path / "landing"
+    destination_dir.mkdir()
+
+    for index, raw_source_file in enumerate(
+        manifest["files"],
+        start=1,
+    ):
+        payload = f"complete-source-{index}".encode()
+        destination_path = destination_dir / raw_source_file["filename"]
+        destination_path.write_bytes(payload)
+
+        raw_source_file["content_length_bytes"] = len(payload)
+        raw_source_file["sha256"] = calculate_sha256(destination_path)
+        raw_source_file["downloaded_at_utc"] = "2026-08-03T08:00:00Z"
+
+    manifest_path = tmp_path / "source_manifest.json"
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    original_manifest = manifest_path.read_text(encoding="utf-8")
+    original_source_files = load_source_files(manifest_path)
+
+    def unexpected_urlopen(
+        url: str,
+        timeout: float,
+    ) -> BytesIO:
+        raise AssertionError(
+            f"Network access was not expected: url={url}, timeout={timeout}"
+        )
+
+    monkeypatch.setattr(
+        "taxi_lakehouse.data_acquisition.urlopen",
+        unexpected_urlopen,
+    )
+
+    results = acquire_source_files(
+        manifest_path,
+        destination_dir,
+        "2026-08-03T08:50:00Z",
+        chunk_size=4,
+        timeout_seconds=5.0,
+    )
+
+    assert tuple(result.action for result in results) == (
+        "reused",
+        "reused",
+    )
+    assert tuple(result.source_file for result in results) == original_source_files
     assert manifest_path.read_text(encoding="utf-8") == original_manifest
