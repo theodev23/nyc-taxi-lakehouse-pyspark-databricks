@@ -1,0 +1,27 @@
+# macOS
+.DS_Store
+
+# Python virtual environments
+.venv/
+venv/
+
+# Python generated files
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Test and quality tooling
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local environment variables
+.env
+.env.*
+!.env.example
+
+# Spark local artifacts
+derby.log
+metastore_db/
+spark-warehouse/
