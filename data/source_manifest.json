@@ -1,0 +1,108 @@
+{
+  "schema_version": "1.0",
+  "dataset": {
+    "name": "NYC TLC Yellow Taxi Trip Records",
+    "publisher": "New York City Taxi and Limousine Commission",
+    "official_page": "https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page",
+    "period_start": "2024-01",
+    "period_end": "2024-06"
+  },
+  "audit": {
+    "audited_at_utc": "2026-08-03T07:34:36Z",
+    "method": "HTTP HEAD requests",
+    "etag_is_checksum": false
+  },
+  "files": [
+    {
+      "filename": "yellow_tripdata_2024-01.parquet",
+      "source_month": "2024-01",
+      "kind": "yellow_taxi_trip_data",
+      "url": "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-01.parquet",
+      "content_type": "binary/octet-stream",
+      "content_length_bytes": 49961641,
+      "last_modified": "Thu, 21 Mar 2024 15:35:44 GMT",
+      "etag": "\"d6ebae95a45f284994e283e2df97c06f-3\"",
+      "accept_ranges": "bytes",
+      "sha256": null,
+      "downloaded_at_utc": null
+    },
+    {
+      "filename": "yellow_tripdata_2024-02.parquet",
+      "source_month": "2024-02",
+      "kind": "yellow_taxi_trip_data",
+      "url": "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-02.parquet",
+      "content_type": "binary/octet-stream",
+      "content_length_bytes": 50349284,
+      "last_modified": "Fri, 19 Apr 2024 18:22:42 GMT",
+      "etag": "\"7337741e6032c0652369749781534e79-3\"",
+      "accept_ranges": "bytes",
+      "sha256": null,
+      "downloaded_at_utc": null
+    },
+    {
+      "filename": "yellow_tripdata_2024-03.parquet",
+      "source_month": "2024-03",
+      "kind": "yellow_taxi_trip_data",
+      "url": "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-03.parquet",
+      "content_type": "binary/octet-stream",
+      "content_length_bytes": 60078280,
+      "last_modified": "Wed, 22 May 2024 19:27:43 GMT",
+      "etag": "\"7a8994a37b02c8200aac7bcf9c3a2c69-4\"",
+      "accept_ranges": "bytes",
+      "sha256": null,
+      "downloaded_at_utc": null
+    },
+    {
+      "filename": "yellow_tripdata_2024-04.parquet",
+      "source_month": "2024-04",
+      "kind": "yellow_taxi_trip_data",
+      "url": "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-04.parquet",
+      "content_type": "binary/octet-stream",
+      "content_length_bytes": 59133625,
+      "last_modified": "Thu, 20 Jun 2024 20:30:14 GMT",
+      "etag": "\"e67ba6e0a21daa942fb9c10aafa2a354-4\"",
+      "accept_ranges": "bytes",
+      "sha256": null,
+      "downloaded_at_utc": null
+    },
+    {
+      "filename": "yellow_tripdata_2024-05.parquet",
+      "source_month": "2024-05",
+      "kind": "yellow_taxi_trip_data",
+      "url": "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-05.parquet",
+      "content_type": "binary/octet-stream",
+      "content_length_bytes": 62553128,
+      "last_modified": "Thu, 18 Jul 2024 18:35:19 GMT",
+      "etag": "\"e7dbcee49593af9a20818857f421e7be-4\"",
+      "accept_ranges": "bytes",
+      "sha256": null,
+      "downloaded_at_utc": null
+    },
+    {
+      "filename": "yellow_tripdata_2024-06.parquet",
+      "source_month": "2024-06",
+      "kind": "yellow_taxi_trip_data",
+      "url": "https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-06.parquet",
+      "content_type": "binary/octet-stream",
+      "content_length_bytes": 59859922,
+      "last_modified": "Tue, 20 Aug 2024 14:01:55 GMT",
+      "etag": "\"247a4df111330ea3b9d909854f8c72bc-4\"",
+      "accept_ranges": "bytes",
+      "sha256": null,
+      "downloaded_at_utc": null
+    },
+    {
+      "filename": "taxi_zone_lookup.csv",
+      "source_month": null,
+      "kind": "taxi_zone_lookup",
+      "url": "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv",
+      "content_type": "text/csv",
+      "content_length_bytes": 12331,
+      "last_modified": "Thu, 22 Feb 2024 21:33:00 GMT",
+      "etag": "\"c6064b7c144c716450641f769659d178\"",
+      "accept_ranges": "bytes",
+      "sha256": null,
+      "downloaded_at_utc": null
+    }
+  ]
+}
