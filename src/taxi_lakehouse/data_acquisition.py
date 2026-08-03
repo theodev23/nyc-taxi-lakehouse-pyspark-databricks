@@ -1,0 +1,84 @@
+"""Utilities for acquiring versioned NYC TLC source files."""
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+
+@dataclass(frozen=True, slots=True)
+class SourceFile:
+    """Metadata describing one remote source file."""
+
+    filename: str
+    source_month: str | None
+    kind: str
+    url: str
+    content_type: str
+    content_length_bytes: int
+    last_modified: str
+    etag: str
+    accept_ranges: str
+    sha256: str | None
+    downloaded_at_utc: str | None
+
+    @classmethod
+    def from_mapping(cls, value: dict[str, Any]) -> "SourceFile":
+        """Build and validate a source file from manifest data."""
+        filename = value["filename"]
+        url = value["url"]
+        content_length_bytes = value["content_length_bytes"]
+
+        if not isinstance(filename, str) or not filename:
+            raise ValueError("Source filename must be a non-empty string.")
+
+        if Path(filename).name != filename:
+            raise ValueError(
+                f"Source filename must not contain directories: {filename!r}."
+            )
+
+        if not isinstance(url, str) or not url.startswith("https://"):
+            raise ValueError(f"Source URL must use HTTPS: {url!r}.")
+
+        if (
+            not isinstance(content_length_bytes, int)
+            or isinstance(content_length_bytes, bool)
+            or content_length_bytes <= 0
+        ):
+            raise ValueError("Source content_length_bytes must be a positive integer.")
+
+        return cls(
+            filename=filename,
+            source_month=value["source_month"],
+            kind=value["kind"],
+            url=url,
+            content_type=value["content_type"],
+            content_length_bytes=content_length_bytes,
+            last_modified=value["last_modified"],
+            etag=value["etag"],
+            accept_ranges=value["accept_ranges"],
+            sha256=value["sha256"],
+            downloaded_at_utc=value["downloaded_at_utc"],
+        )
+
+
+def load_source_files(manifest_path: Path) -> tuple[SourceFile, ...]:
+    """Load all source file records from a JSON manifest."""
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    if manifest.get("schema_version") != "1.0":
+        raise ValueError("Unsupported source manifest schema version.")
+
+    raw_files = manifest.get("files")
+
+    if not isinstance(raw_files, list) or not raw_files:
+        raise ValueError("Source manifest must contain a non-empty files list.")
+
+    source_files = tuple(SourceFile.from_mapping(raw_file) for raw_file in raw_files)
+
+    filenames = [source_file.filename for source_file in source_files]
+
+    if len(filenames) != len(set(filenames)):
+        raise ValueError("Source manifest contains duplicate filenames.")
+
+    return source_files
