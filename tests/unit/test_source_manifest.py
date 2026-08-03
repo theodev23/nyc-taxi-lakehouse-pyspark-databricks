@@ -1,6 +1,7 @@
 """Tests for the versioned NYC TLC source manifest."""
 
 import json
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -53,15 +54,32 @@ def test_manifest_contains_expected_sources() -> None:
 
 
 def test_manifest_source_metadata_is_valid() -> None:
-    """Each source should have valid official metadata before download."""
+    """Each source should have valid official and acquisition metadata."""
     files = load_manifest()["files"]
 
     for item in files:
         parsed_url = urlparse(item["url"])
+        sha256 = item["sha256"]
+        downloaded_at_utc = item["downloaded_at_utc"]
 
         assert parsed_url.scheme == "https"
         assert parsed_url.netloc == "d37ci6vzurychx.cloudfront.net"
         assert item["content_length_bytes"] > 0
         assert item["accept_ranges"] == "bytes"
-        assert item["sha256"] is None
-        assert item["downloaded_at_utc"] is None
+
+        assert (sha256 is None) == (downloaded_at_utc is None)
+
+        if sha256 is not None:
+            assert isinstance(sha256, str)
+            assert len(sha256) == 64
+            assert all(character in "0123456789abcdef" for character in sha256)
+
+            assert isinstance(downloaded_at_utc, str)
+            assert downloaded_at_utc.endswith("Z")
+
+            parsed_downloaded_at = datetime.fromisoformat(
+                downloaded_at_utc.replace("Z", "+00:00")
+            )
+
+            assert parsed_downloaded_at.utcoffset() is not None
+            assert parsed_downloaded_at.utcoffset().total_seconds() == 0
