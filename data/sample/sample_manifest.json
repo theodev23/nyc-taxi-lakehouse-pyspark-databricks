@@ -1,0 +1,170 @@
+{
+  "artifacts": {
+    "taxi_zone_lookup": {
+      "output": {
+        "content_length_bytes": 12331,
+        "path": "data/sample/taxi_zone_lookup.csv",
+        "sha256": "1a99e105092230f8620f301edcca7f80d3080642ff404d28ed957d3fa222c8ed"
+      },
+      "row_count": 265,
+      "source": {
+        "filename": "taxi_zone_lookup.csv",
+        "path": "data/landing/taxi_zone_lookup.csv",
+        "sha256": "1a99e105092230f8620f301edcca7f80d3080642ff404d28ed957d3fa222c8ed"
+      }
+    },
+    "trip_files": [
+      {
+        "column_count": 19,
+        "output": {
+          "content_length_bytes": 15332,
+          "logical_sha256": "5add6f0e3b9f5561296c302b12d1733562008c53127f02aec67e0800695313d6",
+          "path": "data/sample/yellow_tripdata_2024-01.parquet",
+          "sha256": "41efbff20bed622b64dd44a079c3880858bd52bd9135ecd3c997e5fea0518ec6"
+        },
+        "row_count": 250,
+        "source": {
+          "filename": "yellow_tripdata_2024-01.parquet",
+          "path": "data/landing/yellow_tripdata_2024-01.parquet",
+          "sha256": "c4d59da7bbc8abaeeeb1727947ee93d9891a71acb42854bd80db1571b2030510"
+        },
+        "source_month": "2024-01"
+      },
+      {
+        "column_count": 19,
+        "output": {
+          "content_length_bytes": 15408,
+          "logical_sha256": "bebde998b86b90ea55fdc22b51e4e88d910e89a0381b42dd7a05150c023f3f0d",
+          "path": "data/sample/yellow_tripdata_2024-02.parquet",
+          "sha256": "0b9dd4053cc4448102ec32bf9c60399a0162e67685f7bda9829b2b08001642eb"
+        },
+        "row_count": 250,
+        "source": {
+          "filename": "yellow_tripdata_2024-02.parquet",
+          "path": "data/landing/yellow_tripdata_2024-02.parquet",
+          "sha256": "c76c43c18c6c6664080dd920baab4928988d5786a6b65980792ca7cd796f9f20"
+        },
+        "source_month": "2024-02"
+      },
+      {
+        "column_count": 19,
+        "output": {
+          "content_length_bytes": 15373,
+          "logical_sha256": "3e96065bc193c9014c795932f28bc7cc94fe3001e122762a41b0a0a721832484",
+          "path": "data/sample/yellow_tripdata_2024-03.parquet",
+          "sha256": "683edfe1b380438982802d4854d540d1dfbe3433fc025f728fc7c9a5f7c487a8"
+        },
+        "row_count": 250,
+        "source": {
+          "filename": "yellow_tripdata_2024-03.parquet",
+          "path": "data/landing/yellow_tripdata_2024-03.parquet",
+          "sha256": "2d4cdc8fb96726cdd3803b13b02d2e61e71d45720aff0ebc693a8bdd1f249823"
+        },
+        "source_month": "2024-03"
+      },
+      {
+        "column_count": 19,
+        "output": {
+          "content_length_bytes": 15256,
+          "logical_sha256": "bf2d86df04324b796e3f07e2ab5ffab2adb0955ffa5626d166acc1566d0b6e03",
+          "path": "data/sample/yellow_tripdata_2024-04.parquet",
+          "sha256": "26c12360c2c56b3b7cb95d85d6d99957e460aa259a9f9399408463af3dddff2b"
+        },
+        "row_count": 250,
+        "source": {
+          "filename": "yellow_tripdata_2024-04.parquet",
+          "path": "data/landing/yellow_tripdata_2024-04.parquet",
+          "sha256": "ce37f736c7cf9e92164c850ef2b502a8f7bb590fc1804b6edbcb80293da01b89"
+        },
+        "source_month": "2024-04"
+      },
+      {
+        "column_count": 19,
+        "output": {
+          "content_length_bytes": 15567,
+          "logical_sha256": "e04bff2edd2e79acbb7af0d5ec5e2b23bc218792bf57e00f184c56be1cb3711c",
+          "path": "data/sample/yellow_tripdata_2024-05.parquet",
+          "sha256": "d9a3e681b1990378c909ecd5221b6fd5961797b861c9f24e9918837d849bd043"
+        },
+        "row_count": 250,
+        "source": {
+          "filename": "yellow_tripdata_2024-05.parquet",
+          "path": "data/landing/yellow_tripdata_2024-05.parquet",
+          "sha256": "1974230be2b5a3ea92e47b5eb77f32dbf1de896d81ad8df4ab6faba52749ad23"
+        },
+        "source_month": "2024-05"
+      },
+      {
+        "column_count": 19,
+        "output": {
+          "content_length_bytes": 15518,
+          "logical_sha256": "d71c8981f44e27957ee015d8b8ea2f9f921e9344685687e73e135b68ecc4fd85",
+          "path": "data/sample/yellow_tripdata_2024-06.parquet",
+          "sha256": "929b44eb7e9069fc7a583c8a4deff6cf1a6fa6471260eb2ee199416287cc7a78"
+        },
+        "row_count": 250,
+        "source": {
+          "filename": "yellow_tripdata_2024-06.parquet",
+          "path": "data/landing/yellow_tripdata_2024-06.parquet",
+          "sha256": "677cf14c8347f745b583f012fbdba072334c6c4efa17bfd6a64369f2ba30329c"
+        },
+        "source_month": "2024-06"
+      }
+    ]
+  },
+  "description": "Deterministic stratified sample of NYC TLC Yellow Taxi trips for local tests and portfolio demonstrations.",
+  "expected": {
+    "rows_per_month": 250,
+    "taxi_zone_row_count": 265,
+    "total_trip_rows": 1500,
+    "trip_column_count": 19
+  },
+  "schema_version": "1.1",
+  "selection": {
+    "algorithm": "sha256_row_rank_v1",
+    "logical_sha256_algorithm": "sha256_ordered_row_hashes_v1",
+    "partition_keys": [
+      "source_month",
+      "quality_bucket"
+    ],
+    "quality_bucket_priority": [
+      "pickup_zone_unknown",
+      "dropoff_zone_unknown",
+      "distance_negative",
+      "duration_over_24h",
+      "passenger_over_6",
+      "total_amount_zero",
+      "duration_nonpositive",
+      "pickup_outside_month",
+      "total_amount_negative",
+      "passenger_nonpositive",
+      "distance_zero",
+      "passenger_missing",
+      "normal"
+    ],
+    "real_sample_quotas_per_month": {
+      "distance_zero": 20,
+      "duration_nonpositive": 10,
+      "duration_over_24h": 5,
+      "normal": 106,
+      "passenger_missing": 40,
+      "passenger_nonpositive": 20,
+      "passenger_over_6": 10,
+      "pickup_outside_month": 9,
+      "total_amount_negative": 20,
+      "total_amount_zero": 10
+    },
+    "synthetic_only_buckets": [
+      "pickup_zone_unknown",
+      "dropoff_zone_unknown",
+      "distance_negative"
+    ],
+    "timezone": "UTC"
+  },
+  "source_manifest_path": "data/source_manifest.json",
+  "totals": {
+    "artifact_count": 7,
+    "trip_file_count": 6,
+    "trip_row_count": 1500
+  }
+}
