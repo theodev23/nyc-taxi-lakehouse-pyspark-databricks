@@ -149,3 +149,48 @@ def build_quality_bucket_expression(
         return F.lit("normal")
 
     return bucket_expression.otherwise(F.lit("normal"))
+
+
+def build_canonical_row_json_expression(
+    source_columns: tuple[str, ...],
+) -> Column:
+    """Build the canonical JSON representation of one source row."""
+    if not source_columns:
+        raise ValueError("source_columns must contain at least one column.")
+
+    if any(
+        not isinstance(column_name, str) or not column_name
+        for column_name in source_columns
+    ):
+        raise ValueError("source_columns must contain only non-empty strings.")
+
+    if len(source_columns) != len(set(source_columns)):
+        raise ValueError("source_columns must not contain duplicates.")
+
+    return F.to_json(
+        F.struct(
+            *[F.col(column_name).alias(column_name) for column_name in source_columns]
+        ),
+        {
+            "ignoreNullFields": "false",
+            "timestampFormat": ("yyyy-MM-dd'T'HH:mm:ss.SSSSSS"),
+            "timestampNTZFormat": ("yyyy-MM-dd'T'HH:mm:ss.SSSSSS"),
+        },
+    )
+
+
+def build_row_hash_expression(
+    source_month: str,
+    canonical_row_json: Column,
+) -> Column:
+    """Build the deterministic SHA-256 hash of one source row."""
+    source_month_bounds(source_month)
+
+    return F.sha2(
+        F.concat_ws(
+            "\u001f",
+            F.lit(source_month),
+            canonical_row_json,
+        ),
+        256,
+    )

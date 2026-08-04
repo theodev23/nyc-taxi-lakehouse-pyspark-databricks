@@ -1,5 +1,6 @@
 """Tests for deterministic sample-generation transformations."""
 
+import hashlib
 from datetime import datetime
 from pathlib import Path
 
@@ -10,13 +11,16 @@ from pyspark.sql.types import (
     DoubleType,
     IntegerType,
     LongType,
+    StringType,
     StructField,
     StructType,
     TimestampNTZType,
 )
 
 from taxi_lakehouse.sample_generation import (
+    build_canonical_row_json_expression,
     build_quality_bucket_expression,
+    build_row_hash_expression,
     source_month_bounds,
 )
 from taxi_lakehouse.sample_specification import (
@@ -230,3 +234,129 @@ def test_quality_bucket_expression_handles_normal_only(
     )
 
     assert result["quality_bucket"] == "normal"
+
+
+def test_canonical_row_json_preserves_order_and_nulls(
+    spark: SparkSession,
+) -> None:
+    """Canonical JSON should preserve source order and null fields."""
+    schema = StructType(
+        [
+            StructField(
+                "trip_id",
+                IntegerType(),
+                False,
+            ),
+            StructField(
+                "pickup_at",
+                TimestampNTZType(),
+                False,
+            ),
+            StructField(
+                "note",
+                StringType(),
+                True,
+            ),
+        ]
+    )
+
+    frame = spark.createDataFrame(
+        [
+            (
+                7,
+                datetime(
+                    2024,
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    123456,
+                ),
+                None,
+            )
+        ],
+        schema=schema,
+    )
+
+    canonical_json = frame.select(
+        build_canonical_row_json_expression(
+            (
+                "trip_id",
+                "pickup_at",
+                "note",
+            )
+        ).alias("canonical_json")
+    ).first()["canonical_json"]
+
+    assert canonical_json == (
+        '{"trip_id":7,"pickup_at":"2024-01-02T03:04:05.123456","note":null}'
+    )
+
+
+def test_row_hash_matches_sha256_contract(
+    spark: SparkSession,
+) -> None:
+    """The Spark hash should match the documented SHA-256 input."""
+    frame = spark.createDataFrame(
+        [
+            (
+                11,
+                "airport",
+            )
+        ],
+        schema=StructType(
+            [
+                StructField(
+                    "trip_id",
+                    IntegerType(),
+                    False,
+                ),
+                StructField(
+                    "label",
+                    StringType(),
+                    False,
+                ),
+            ]
+        ),
+    )
+
+    canonical_expression = build_canonical_row_json_expression(
+        (
+            "trip_id",
+            "label",
+        )
+    )
+
+    result = frame.select(
+        canonical_expression.alias("canonical_json"),
+        build_row_hash_expression(
+            "2024-01",
+            canonical_expression,
+        ).alias("row_hash"),
+    ).first()
+
+    expected_hash = hashlib.sha256(
+        (f"2024-01\u001f{result['canonical_json']}").encode()
+    ).hexdigest()
+
+    assert len(result["row_hash"]) == 64
+    assert result["row_hash"] == expected_hash
+
+
+def test_canonical_row_json_rejects_duplicate_columns(
+    spark: SparkSession,
+) -> None:
+    """Duplicate source columns should fail before execution."""
+    with pytest.raises(
+        ValueError,
+        match="must not contain duplicates",
+    ):
+        build_canonical_row_json_expression(
+            (
+                "trip_id",
+                "trip_id",
+            )
+        )
+
+    assert spark.version
