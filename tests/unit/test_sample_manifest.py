@@ -143,8 +143,11 @@ def test_build_sample_manifest_payload_records_artifacts() -> None:
         taxi_zone_output,
     )
 
-    assert payload["schema_version"] == "1.0"
+    assert payload["schema_version"] == "1.1"
     assert payload["selection"]["algorithm"] == ("sha256_row_rank_v1")
+    assert payload["selection"]["logical_sha256_algorithm"] == (
+        "sha256_ordered_row_hashes_v1"
+    )
     assert payload["selection"]["real_sample_quotas_per_month"] == {
         "normal": 2,
     }
@@ -159,6 +162,7 @@ def test_build_sample_manifest_payload_records_artifacts() -> None:
     assert trip_files[0]["row_count"] == 2
     assert trip_files[0]["column_count"] == 19
     assert trip_files[0]["output"]["sha256"] == ("a" * 64)
+    assert trip_files[0]["output"]["logical_sha256"] == ("e" * 64)
 
     assert payload["artifacts"]["taxi_zone_lookup"]["output"]["sha256"] == ("c" * 64)
 
@@ -210,6 +214,35 @@ def test_build_sample_manifest_payload_rejects_missing_month() -> None:
             specification,
             resolved_sources,
             monthly_samples[:1],
+            taxi_zone_output,
+        )
+
+
+def test_build_sample_manifest_payload_rejects_invalid_logical_checksum() -> None:
+    """Logical sample checksums should use lowercase SHA-256 values."""
+    (
+        specification,
+        resolved_sources,
+        monthly_samples,
+        taxi_zone_output,
+    ) = build_manifest_fixture()
+
+    invalid_samples = (
+        replace(
+            monthly_samples[0],
+            logical_sha256="invalid",
+        ),
+        monthly_samples[1],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="valid logical SHA-256 checksum",
+    ):
+        build_sample_manifest_payload(
+            specification,
+            resolved_sources,
+            invalid_samples,
             taxi_zone_output,
         )
 

@@ -4,6 +4,9 @@ from collections.abc import Sequence
 from typing import Any
 
 from taxi_lakehouse.sample_artifacts import GeneratedSampleFile
+from taxi_lakehouse.sample_generation import (
+    LOGICAL_SAMPLE_SHA256_ALGORITHM,
+)
 from taxi_lakehouse.sample_pipeline import (
     GeneratedMonthlySample,
     ResolvedSampleSources,
@@ -60,6 +63,17 @@ def build_sample_manifest_payload(
                 f"Monthly source must contain a SHA-256 checksum: {source_month!r}."
             )
 
+        if len(sample.logical_sha256) != 64 or any(
+            character not in "0123456789abcdef" for character in sample.logical_sha256
+        ):
+            raise ValueError(
+                "Monthly sample must contain a valid logical "
+                f"SHA-256 checksum: {source_month!r}."
+            )
+
+        output_metadata = generated_file_mapping(sample.output_file)
+        output_metadata["logical_sha256"] = sample.logical_sha256
+
         trip_files.append(
             {
                 "source_month": source_month,
@@ -68,7 +82,7 @@ def build_sample_manifest_payload(
                     "filename": sample.source_file.filename,
                     "sha256": sample.source_file.sha256,
                 },
-                "output": generated_file_mapping(sample.output_file),
+                "output": output_metadata,
                 "row_count": sample.selected_row_count,
                 "column_count": sample.source_column_count,
             }
@@ -89,11 +103,12 @@ def build_sample_manifest_payload(
     }
 
     return {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "description": specification.description,
         "source_manifest_path": (specification.source_manifest_path.as_posix()),
         "selection": {
             "algorithm": specification.selection.algorithm,
+            "logical_sha256_algorithm": (LOGICAL_SAMPLE_SHA256_ALGORITHM),
             "timezone": specification.selection.timezone,
             "partition_keys": list(specification.selection.partition_keys),
             "quality_bucket_priority": list(specification.quality_bucket_priority),
