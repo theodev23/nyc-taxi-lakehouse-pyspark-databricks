@@ -21,6 +21,7 @@ from taxi_lakehouse.sample_generation import (
     build_canonical_row_json_expression,
     build_quality_bucket_expression,
     build_row_hash_expression,
+    select_deterministic_sample_rows,
     source_month_bounds,
 )
 from taxi_lakehouse.sample_specification import (
@@ -360,3 +361,244 @@ def test_canonical_row_json_rejects_duplicate_columns(
         )
 
     assert spark.version
+
+
+def test_deterministic_selection_respects_quotas_and_schema(
+    spark: SparkSession,
+) -> None:
+    """Selection should be stable and preserve the source schema."""
+    specification = load_sample_specification(PROJECT_SPECIFICATION_PATH)
+
+    schema = StructType(
+        [
+            StructField("trip_id", IntegerType(), False),
+            StructField(
+                "tpep_pickup_datetime",
+                TimestampNTZType(),
+                True,
+            ),
+            StructField(
+                "tpep_dropoff_datetime",
+                TimestampNTZType(),
+                True,
+            ),
+            StructField(
+                "passenger_count",
+                LongType(),
+                True,
+            ),
+            StructField(
+                "trip_distance",
+                DoubleType(),
+                True,
+            ),
+            StructField(
+                "PULocationID",
+                IntegerType(),
+                True,
+            ),
+            StructField(
+                "DOLocationID",
+                IntegerType(),
+                True,
+            ),
+            StructField(
+                "total_amount",
+                DoubleType(),
+                True,
+            ),
+        ]
+    )
+
+    rows = [
+        (
+            1,
+            datetime(2024, 1, 2, 10, 0),
+            datetime(2024, 1, 2, 10, 30),
+            1,
+            2.5,
+            1,
+            2,
+            20.0,
+        ),
+        (
+            2,
+            datetime(2024, 1, 3, 10, 0),
+            datetime(2024, 1, 3, 10, 30),
+            1,
+            3.5,
+            1,
+            2,
+            25.0,
+        ),
+        (
+            3,
+            datetime(2024, 1, 4, 10, 0),
+            datetime(2024, 1, 4, 10, 30),
+            2,
+            4.5,
+            1,
+            2,
+            30.0,
+        ),
+        (
+            10,
+            datetime(2024, 1, 5, 10, 0),
+            datetime(2024, 1, 5, 10, 30),
+            1,
+            0.0,
+            1,
+            2,
+            15.0,
+        ),
+        (
+            11,
+            datetime(2024, 1, 6, 10, 0),
+            datetime(2024, 1, 6, 10, 30),
+            1,
+            0.0,
+            1,
+            2,
+            16.0,
+        ),
+        (
+            20,
+            datetime(2024, 1, 7, 10, 0),
+            datetime(2024, 1, 7, 10, 30),
+            None,
+            2.0,
+            1,
+            2,
+            18.0,
+        ),
+        (
+            21,
+            datetime(2024, 1, 8, 10, 0),
+            datetime(2024, 1, 8, 10, 30),
+            None,
+            2.1,
+            1,
+            2,
+            19.0,
+        ),
+        (
+            30,
+            datetime(2024, 1, 9, 10, 0),
+            datetime(2024, 1, 9, 10, 30),
+            1,
+            2.0,
+            1,
+            2,
+            -4.0,
+        ),
+        (
+            31,
+            datetime(2024, 1, 10, 10, 0),
+            datetime(2024, 1, 10, 10, 30),
+            1,
+            2.0,
+            1,
+            2,
+            -5.0,
+        ),
+    ]
+
+    frame = spark.createDataFrame(
+        rows,
+        schema=schema,
+    )
+
+    source_columns = tuple(frame.columns)
+    quota_by_bucket = {
+        "normal": 2,
+        "distance_zero": 1,
+        "passenger_missing": 1,
+        "total_amount_negative": 1,
+    }
+
+    first_selection = select_deterministic_sample_rows(
+        frame.repartition(1),
+        "2024-01",
+        source_columns,
+        (1, 2),
+        specification.quality_bucket_priority,
+        quota_by_bucket,
+    )
+
+    second_selection = select_deterministic_sample_rows(
+        frame.repartition(3),
+        "2024-01",
+        source_columns,
+        (1, 2),
+        specification.quality_bucket_priority,
+        quota_by_bucket,
+    )
+
+    first_trip_ids = sorted(row["trip_id"] for row in first_selection.collect())
+
+    second_trip_ids = sorted(row["trip_id"] for row in second_selection.collect())
+
+    assert first_trip_ids == second_trip_ids
+    assert len(first_trip_ids) == 5
+    assert first_selection.columns == list(source_columns)
+    assert first_selection.schema == frame.schema
+
+    selected_bucket_counts = {
+        row["quality_bucket"]: row["count"]
+        for row in (
+            first_selection.withColumn(
+                "quality_bucket",
+                build_quality_bucket_expression(
+                    "2024-01",
+                    (1, 2),
+                    specification.quality_bucket_priority,
+                ),
+            )
+            .groupBy("quality_bucket")
+            .count()
+            .collect()
+        )
+    }
+
+    assert selected_bucket_counts == {
+        "normal": 2,
+        "distance_zero": 1,
+        "passenger_missing": 1,
+        "total_amount_negative": 1,
+    }
+
+
+def test_deterministic_selection_rejects_missing_source_column(
+    spark: SparkSession,
+) -> None:
+    """Missing canonical source columns should fail explicitly."""
+    with pytest.raises(
+        ValueError,
+        match="Source columns are missing",
+    ):
+        select_deterministic_sample_rows(
+            spark.range(1),
+            "2024-01",
+            ("missing_column",),
+            (1,),
+            ("normal",),
+            {"normal": 1},
+        )
+
+
+def test_deterministic_selection_rejects_nonpositive_quota(
+    spark: SparkSession,
+) -> None:
+    """Sample bucket quotas should be strictly positive."""
+    with pytest.raises(
+        ValueError,
+        match="Sample quotas must be positive integers",
+    ):
+        select_deterministic_sample_rows(
+            spark.range(1),
+            "2024-01",
+            ("id",),
+            (1,),
+            ("normal",),
+            {"normal": 0},
+        )
