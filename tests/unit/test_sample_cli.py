@@ -82,6 +82,7 @@ def build_generated_dataset() -> GeneratedSampleDataset:
             source_path=monthly_source.file_path,
             source_column_count=19,
             selected_row_count=250,
+            logical_sha256=("e" * 64),
             output_file=GeneratedSampleFile(
                 file_path=Path(
                     specification.output.trip_file_pattern.format(

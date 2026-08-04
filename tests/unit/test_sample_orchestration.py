@@ -146,6 +146,7 @@ def test_generate_sample_dataset_orchestrates_all_artifacts(
             source_path=monthly_source.file_path,
             source_column_count=19,
             selected_row_count=250,
+            logical_sha256=("e" * 64),
             output_file=GeneratedSampleFile(
                 file_path=Path(
                     specification.output.trip_file_pattern.format(
@@ -333,6 +334,7 @@ def test_generate_sample_dataset_stops_before_metadata_on_failure(
             source_path=monthly_source.file_path,
             source_column_count=19,
             selected_row_count=250,
+            logical_sha256=("e" * 64),
             output_file=GeneratedSampleFile(
                 file_path=tmp_path / (monthly_source.source_month + ".parquet"),
                 content_length_bytes=1,

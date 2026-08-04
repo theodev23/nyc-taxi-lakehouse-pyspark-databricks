@@ -99,6 +99,7 @@ def build_manifest_fixture() -> tuple[
             source_path=monthly_source.file_path,
             source_column_count=19,
             selected_row_count=2,
+            logical_sha256=("e" * 64),
             output_file=GeneratedSampleFile(
                 file_path=Path(
                     f"data/sample/yellow_tripdata_{monthly_source.source_month}.parquet"

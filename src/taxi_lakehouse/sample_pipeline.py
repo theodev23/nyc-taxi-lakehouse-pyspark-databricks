@@ -14,6 +14,7 @@ from taxi_lakehouse.sample_artifacts import (
     write_single_parquet_file,
 )
 from taxi_lakehouse.sample_generation import (
+    calculate_logical_sample_sha256,
     select_deterministic_sample_rows,
 )
 from taxi_lakehouse.sample_specification import (
@@ -48,6 +49,7 @@ class GeneratedMonthlySample:
     source_path: Path
     source_column_count: int
     selected_row_count: int
+    logical_sha256: str
     output_file: GeneratedSampleFile
 
 
@@ -244,6 +246,12 @@ def generate_monthly_sample(
                 f"month={monthly_source.source_month!r}."
             )
 
+        logical_sha256 = calculate_logical_sample_sha256(
+            selected_frame,
+            monthly_source.source_month,
+            source_columns,
+        )
+
         output_path = Path(
             specification.output.trip_file_pattern.format(
                 source_month=monthly_source.source_month
@@ -264,5 +272,6 @@ def generate_monthly_sample(
         source_path=monthly_source.file_path,
         source_column_count=source_column_count,
         selected_row_count=selected_row_count,
+        logical_sha256=logical_sha256,
         output_file=output_file,
     )

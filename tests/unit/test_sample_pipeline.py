@@ -381,6 +381,8 @@ def test_generate_monthly_sample_writes_expected_artifact(
     assert result.source_month == "2024-01"
     assert result.source_column_count == 8
     assert result.selected_row_count == 3
+    assert len(result.logical_sha256) == 64
+    assert set(result.logical_sha256) <= set("0123456789abcdef")
     assert result.output_file.file_path == (expected_output_path)
     assert expected_output_path.is_file()
     assert len(result.output_file.sha256) == 64
