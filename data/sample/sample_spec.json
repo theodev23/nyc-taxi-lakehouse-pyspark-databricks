@@ -36,12 +36,12 @@
     "passenger_over_6": 10,
     "total_amount_zero": 10,
     "duration_nonpositive": 10,
-    "pickup_outside_month": 15,
+    "pickup_outside_month": 9,
     "total_amount_negative": 20,
     "passenger_nonpositive": 20,
     "distance_zero": 20,
     "passenger_missing": 40,
-    "normal": 100
+    "normal": 106
   },
   "synthetic_only_buckets": [
     "pickup_zone_unknown",

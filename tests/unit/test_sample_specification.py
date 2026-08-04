@@ -48,7 +48,8 @@ def test_project_sample_specification_loads() -> None:
     assert specification.source_profile.trip_row_count == 20_332_093
     assert specification.expected_rows_per_month == 250
     assert specification.expected_total_trip_rows == 1_500
-    assert specification.quota_for("normal") == 100
+    assert specification.quota_for("pickup_outside_month") == 9
+    assert specification.quota_for("normal") == 106
     assert specification.quota_for("duration_over_24h") == 5
     assert specification.output.taxi_zone_lookup_path == Path(
         "data/sample/taxi_zone_lookup.csv"
