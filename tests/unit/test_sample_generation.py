@@ -21,6 +21,7 @@ from taxi_lakehouse.sample_generation import (
     build_canonical_row_json_expression,
     build_quality_bucket_expression,
     build_row_hash_expression,
+    calculate_logical_sample_sha256,
     select_deterministic_sample_rows,
     source_month_bounds,
 )
@@ -343,6 +344,67 @@ def test_row_hash_matches_sha256_contract(
 
     assert len(result["row_hash"]) == 64
     assert result["row_hash"] == expected_hash
+
+
+def test_logical_sample_sha256_is_partition_independent(
+    spark: SparkSession,
+) -> None:
+    """Logical checksums should ignore Spark partitioning."""
+    frame = spark.createDataFrame(
+        [
+            (2, "second"),
+            (1, None),
+            (3, "third"),
+        ],
+        (
+            "trip_id",
+            "label",
+        ),
+    )
+
+    source_columns = (
+        "trip_id",
+        "label",
+    )
+
+    first_digest = calculate_logical_sample_sha256(
+        frame.repartition(3),
+        "2024-01",
+        source_columns,
+    )
+
+    second_digest = calculate_logical_sample_sha256(
+        frame.orderBy(
+            "trip_id",
+            ascending=False,
+        ).repartition(2),
+        "2024-01",
+        source_columns,
+    )
+
+    canonical_rows = tuple(
+        row["canonical_json"]
+        for row in (
+            frame.select(
+                build_canonical_row_json_expression(source_columns).alias(
+                    "canonical_json"
+                )
+            ).collect()
+        )
+    )
+
+    ordered_row_hashes = sorted(
+        hashlib.sha256((f"2024-01\u001f{canonical_row}").encode()).hexdigest()
+        for canonical_row in canonical_rows
+    )
+
+    expected_digest = hashlib.sha256(
+        "\n".join(ordered_row_hashes).encode("utf-8")
+    ).hexdigest()
+
+    assert first_digest == expected_digest
+    assert second_digest == expected_digest
+    assert len(first_digest) == 64
 
 
 def test_canonical_row_json_rejects_duplicate_columns(

@@ -1,5 +1,6 @@
 """PySpark transformations for deterministic sample generation."""
 
+import hashlib
 from datetime import datetime
 
 from pyspark.sql import Column, DataFrame
@@ -195,6 +196,42 @@ def build_row_hash_expression(
         ),
         256,
     )
+
+
+LOGICAL_SAMPLE_SHA256_ALGORITHM = "sha256_ordered_row_hashes_v1"
+
+
+def calculate_logical_sample_sha256(
+    frame: DataFrame,
+    source_month: str,
+    source_columns: tuple[str, ...],
+) -> str:
+    """Calculate a deterministic checksum of logical sample rows."""
+    canonical_json = build_canonical_row_json_expression(source_columns)
+
+    row_hash = build_row_hash_expression(
+        source_month,
+        canonical_json,
+    )
+
+    ordered_row_hashes = tuple(
+        row["_row_hash"]
+        for row in (
+            frame.select(
+                row_hash.alias("_row_hash"),
+                canonical_json.alias("_canonical_json"),
+            )
+            .orderBy(
+                "_row_hash",
+                "_canonical_json",
+            )
+            .collect()
+        )
+    )
+
+    serialized_hashes = "\n".join(ordered_row_hashes).encode("utf-8")
+
+    return hashlib.sha256(serialized_hashes).hexdigest()
 
 
 TECHNICAL_SAMPLE_COLUMNS = frozenset(
