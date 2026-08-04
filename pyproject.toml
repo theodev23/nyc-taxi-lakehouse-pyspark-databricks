@@ -12,6 +12,9 @@ dependencies = [
     "pyspark==3.5.9",
 ]
 
+[project.scripts]
+taxi-lakehouse-download = "taxi_lakehouse.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest==9.1.1",

@@ -25,3 +25,8 @@ htmlcov/
 derby.log
 metastore_db/
 spark-warehouse/
+
+# Local data and lakehouse outputs
+data/landing/
+data/lakehouse/
+data/tmp/
