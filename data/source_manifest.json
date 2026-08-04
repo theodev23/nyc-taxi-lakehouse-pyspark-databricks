@@ -23,8 +23,8 @@
       "last_modified": "Thu, 21 Mar 2024 15:35:44 GMT",
       "etag": "\"d6ebae95a45f284994e283e2df97c06f-3\"",
       "accept_ranges": "bytes",
-      "sha256": null,
-      "downloaded_at_utc": null
+      "sha256": "c4d59da7bbc8abaeeeb1727947ee93d9891a71acb42854bd80db1571b2030510",
+      "downloaded_at_utc": "2026-08-03T09:12:07Z"
     },
     {
       "filename": "yellow_tripdata_2024-02.parquet",
@@ -36,8 +36,8 @@
       "last_modified": "Fri, 19 Apr 2024 18:22:42 GMT",
       "etag": "\"7337741e6032c0652369749781534e79-3\"",
       "accept_ranges": "bytes",
-      "sha256": null,
-      "downloaded_at_utc": null
+      "sha256": "c76c43c18c6c6664080dd920baab4928988d5786a6b65980792ca7cd796f9f20",
+      "downloaded_at_utc": "2026-08-03T09:12:07Z"
     },
     {
       "filename": "yellow_tripdata_2024-03.parquet",
@@ -49,8 +49,8 @@
       "last_modified": "Wed, 22 May 2024 19:27:43 GMT",
       "etag": "\"7a8994a37b02c8200aac7bcf9c3a2c69-4\"",
       "accept_ranges": "bytes",
-      "sha256": null,
-      "downloaded_at_utc": null
+      "sha256": "2d4cdc8fb96726cdd3803b13b02d2e61e71d45720aff0ebc693a8bdd1f249823",
+      "downloaded_at_utc": "2026-08-03T09:12:07Z"
     },
     {
       "filename": "yellow_tripdata_2024-04.parquet",
@@ -62,8 +62,8 @@
       "last_modified": "Thu, 20 Jun 2024 20:30:14 GMT",
       "etag": "\"e67ba6e0a21daa942fb9c10aafa2a354-4\"",
       "accept_ranges": "bytes",
-      "sha256": null,
-      "downloaded_at_utc": null
+      "sha256": "ce37f736c7cf9e92164c850ef2b502a8f7bb590fc1804b6edbcb80293da01b89",
+      "downloaded_at_utc": "2026-08-03T09:12:07Z"
     },
     {
       "filename": "yellow_tripdata_2024-05.parquet",
@@ -75,8 +75,8 @@
       "last_modified": "Thu, 18 Jul 2024 18:35:19 GMT",
       "etag": "\"e7dbcee49593af9a20818857f421e7be-4\"",
       "accept_ranges": "bytes",
-      "sha256": null,
-      "downloaded_at_utc": null
+      "sha256": "1974230be2b5a3ea92e47b5eb77f32dbf1de896d81ad8df4ab6faba52749ad23",
+      "downloaded_at_utc": "2026-08-03T09:12:07Z"
     },
     {
       "filename": "yellow_tripdata_2024-06.parquet",
@@ -88,8 +88,8 @@
       "last_modified": "Tue, 20 Aug 2024 14:01:55 GMT",
       "etag": "\"247a4df111330ea3b9d909854f8c72bc-4\"",
       "accept_ranges": "bytes",
-      "sha256": null,
-      "downloaded_at_utc": null
+      "sha256": "677cf14c8347f745b583f012fbdba072334c6c4efa17bfd6a64369f2ba30329c",
+      "downloaded_at_utc": "2026-08-03T09:12:07Z"
     },
     {
       "filename": "taxi_zone_lookup.csv",

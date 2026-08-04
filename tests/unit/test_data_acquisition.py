@@ -187,6 +187,9 @@ def test_record_download_metadata_updates_manifest(
     payload = b"manifest-metadata"
     manifest = json.loads(PROJECT_MANIFEST_PATH.read_text(encoding="utf-8"))
     manifest["files"][0]["content_length_bytes"] = len(payload)
+    manifest["files"][0]["sha256"] = None
+    manifest["files"][0]["downloaded_at_utc"] = None
+    unrelated_entry_before = manifest["files"][1].copy()
 
     manifest_path = tmp_path / "source_manifest.json"
     manifest_path.write_text(
@@ -214,7 +217,7 @@ def test_record_download_metadata_updates_manifest(
     assert updated_source_file.downloaded_at_utc == downloaded_at_utc
     assert updated_entry["sha256"] == updated_source_file.sha256
     assert updated_entry["downloaded_at_utc"] == downloaded_at_utc
-    assert updated_manifest["files"][1]["sha256"] is None
+    assert updated_manifest["files"][1] == unrelated_entry_before
     assert validate_local_source_file(
         updated_source_file,
         file_path,
@@ -436,6 +439,8 @@ def test_acquire_source_file_records_missing_metadata(
     payload = b"existing-without-metadata"
     manifest = json.loads(PROJECT_MANIFEST_PATH.read_text(encoding="utf-8"))
     manifest["files"][0]["content_length_bytes"] = len(payload)
+    manifest["files"][0]["sha256"] = None
+    manifest["files"][0]["downloaded_at_utc"] = None
 
     manifest_path = tmp_path / "source_manifest.json"
     manifest_path.write_text(
