@@ -9,6 +9,13 @@ from taxi_lakehouse.data_acquisition import (
     SourceFile,
     validate_local_source_file,
 )
+from taxi_lakehouse.sample_artifacts import (
+    GeneratedSampleFile,
+    write_single_parquet_file,
+)
+from taxi_lakehouse.sample_generation import (
+    select_deterministic_sample_rows,
+)
 from taxi_lakehouse.sample_specification import (
     SampleSpecification,
 )
@@ -30,6 +37,18 @@ class ResolvedSampleSources:
     monthly_trip_sources: tuple[ResolvedMonthlyTripSource, ...]
     taxi_zone_source: SourceFile
     taxi_zone_path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class GeneratedMonthlySample:
+    """Metadata for one generated monthly trip sample."""
+
+    source_month: str
+    source_file: SourceFile
+    source_path: Path
+    source_column_count: int
+    selected_row_count: int
+    output_file: GeneratedSampleFile
 
 
 def resolve_sample_sources(
@@ -167,3 +186,83 @@ def load_taxi_zone_ids(
         raise ValueError("Taxi zone LocationID values must be unique.")
 
     return tuple(sorted(raw_location_ids))
+
+
+def generate_monthly_sample(
+    spark: SparkSession,
+    monthly_source: ResolvedMonthlyTripSource,
+    specification: SampleSpecification,
+    zone_ids: tuple[int, ...],
+    temporary_root: Path,
+) -> GeneratedMonthlySample:
+    """Generate and validate one deterministic monthly trip sample."""
+    if monthly_source.source_month not in specification.source_months:
+        raise ValueError(
+            "Monthly source is absent from the sample specification: "
+            f"{monthly_source.source_month!r}."
+        )
+
+    source_frame = spark.read.parquet(monthly_source.file_path.as_posix())
+    source_columns = tuple(source_frame.columns)
+    source_column_count = len(source_columns)
+
+    expected_column_count = specification.source_profile.trip_column_count
+
+    if source_column_count != expected_column_count:
+        raise ValueError(
+            "Source column count does not match specification: "
+            f"expected={expected_column_count}, "
+            f"actual={source_column_count}, "
+            f"month={monthly_source.source_month!r}."
+        )
+
+    quota_by_bucket = {
+        quota.quality_bucket: quota.rows_per_month
+        for quota in (specification.real_sample_quotas_per_month)
+    }
+
+    selected_frame = select_deterministic_sample_rows(
+        source_frame,
+        monthly_source.source_month,
+        source_columns,
+        zone_ids,
+        specification.quality_bucket_priority,
+        quota_by_bucket,
+    ).persist()
+
+    try:
+        if selected_frame.schema != source_frame.schema:
+            raise RuntimeError("Selected sample schema does not match source schema.")
+
+        selected_row_count = selected_frame.count()
+
+        if selected_row_count != specification.expected_rows_per_month:
+            raise ValueError(
+                "Selected row count does not match monthly target: "
+                f"expected={specification.expected_rows_per_month}, "
+                f"actual={selected_row_count}, "
+                f"month={monthly_source.source_month!r}."
+            )
+
+        output_path = Path(
+            specification.output.trip_file_pattern.format(
+                source_month=monthly_source.source_month
+            )
+        )
+
+        output_file = write_single_parquet_file(
+            selected_frame,
+            output_path,
+            temporary_root,
+        )
+    finally:
+        selected_frame.unpersist()
+
+    return GeneratedMonthlySample(
+        source_month=monthly_source.source_month,
+        source_file=monthly_source.source_file,
+        source_path=monthly_source.file_path,
+        source_column_count=source_column_count,
+        selected_row_count=selected_row_count,
+        output_file=output_file,
+    )
