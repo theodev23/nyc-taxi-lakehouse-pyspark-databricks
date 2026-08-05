@@ -1,0 +1,70 @@
+{
+  "schema_version": "1.0",
+  "description": "Deterministic stratified sample of NYC TLC Yellow Taxi trips for local tests and portfolio demonstrations.",
+  "source_manifest_path": "data/source_manifest.json",
+  "source_profile": {
+    "trip_row_count": 20332093,
+    "trip_column_count": 19,
+    "schema_signature": "fe168fb695319a91",
+    "taxi_zone_row_count": 265
+  },
+  "source_months": [
+    "2024-01",
+    "2024-02",
+    "2024-03",
+    "2024-04",
+    "2024-05",
+    "2024-06"
+  ],
+  "quality_bucket_priority": [
+    "pickup_zone_unknown",
+    "dropoff_zone_unknown",
+    "distance_negative",
+    "duration_over_24h",
+    "passenger_over_6",
+    "total_amount_zero",
+    "duration_nonpositive",
+    "pickup_outside_month",
+    "total_amount_negative",
+    "passenger_nonpositive",
+    "distance_zero",
+    "passenger_missing",
+    "normal"
+  ],
+  "real_sample_quotas_per_month": {
+    "duration_over_24h": 5,
+    "passenger_over_6": 10,
+    "total_amount_zero": 10,
+    "duration_nonpositive": 10,
+    "pickup_outside_month": 9,
+    "total_amount_negative": 20,
+    "passenger_nonpositive": 20,
+    "distance_zero": 20,
+    "passenger_missing": 40,
+    "normal": 106
+  },
+  "synthetic_only_buckets": [
+    "pickup_zone_unknown",
+    "dropoff_zone_unknown",
+    "distance_negative"
+  ],
+  "selection": {
+    "algorithm": "sha256_row_rank_v1",
+    "timezone": "UTC",
+    "partition_keys": [
+      "source_month",
+      "quality_bucket"
+    ],
+    "hash_input": "source_month plus canonical JSON representation of all 19 source columns",
+    "ranking": "row_number ordered by row_hash within each source_month and quality_bucket",
+    "preserve_source_schema": true,
+    "include_sampling_columns_in_output": false
+  },
+  "expected_rows_per_month": 250,
+  "expected_total_trip_rows": 1500,
+  "output": {
+    "trip_file_pattern": "data/sample/yellow_tripdata_{source_month}.parquet",
+    "taxi_zone_lookup_path": "data/sample/taxi_zone_lookup.csv",
+    "sample_manifest_path": "data/sample/sample_manifest.json"
+  }
+}

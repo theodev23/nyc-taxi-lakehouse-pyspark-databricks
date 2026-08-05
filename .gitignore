@@ -30,3 +30,6 @@ spark-warehouse/
 data/landing/
 data/lakehouse/
 data/tmp/
+
+# Temporary deterministic sample generation files
+data/sample/.generation_tmp/
