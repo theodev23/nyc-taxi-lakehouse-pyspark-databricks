@@ -12,6 +12,7 @@ from taxi_lakehouse.sample_artifacts import (
 from taxi_lakehouse.sample_profile_artifact import (
     generate_sample_profile_artifact,
 )
+from taxi_lakehouse.spark_session import build_local_spark_session
 
 DEFAULT_SAMPLE_SPECIFICATION_PATH = Path("data/sample/sample_spec.json")
 DEFAULT_SAMPLE_PROFILE_PATH = Path("data/sample/sample_profile.json")
@@ -57,16 +58,7 @@ def parse_arguments(
 
 def create_spark_session() -> SparkSession:
     """Create the local Spark session used for profiling."""
-    return (
-        SparkSession.builder.master("local[*]")
-        .appName("nyc-taxi-sample-profile")
-        .config("spark.ui.enabled", "false")
-        .config(
-            "spark.sql.session.timeZone",
-            "UTC",
-        )
-        .getOrCreate()
-    )
+    return build_local_spark_session("nyc-taxi-sample-profile")
 
 
 def print_profile_summary(

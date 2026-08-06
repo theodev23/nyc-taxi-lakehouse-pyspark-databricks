@@ -13,6 +13,7 @@ from taxi_lakehouse.sample_orchestration import (
 from taxi_lakehouse.sample_pipeline import (
     GeneratedMonthlySample,
 )
+from taxi_lakehouse.spark_session import build_local_spark_session
 
 DEFAULT_SPECIFICATION_PATH = Path("data/sample/sample_spec.json")
 DEFAULT_LANDING_DIRECTORY = Path("data/landing")
@@ -52,13 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def build_spark_session() -> SparkSession:
     """Create the local Spark session used for sample generation."""
-    return (
-        SparkSession.builder.master("local[*]")
-        .appName("nyc-taxi-deterministic-sample")
-        .config("spark.ui.enabled", "false")
-        .config("spark.sql.session.timeZone", "UTC")
-        .getOrCreate()
-    )
+    return build_local_spark_session("nyc-taxi-deterministic-sample")
 
 
 def format_monthly_sample(
