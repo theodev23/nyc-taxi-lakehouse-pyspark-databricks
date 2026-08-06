@@ -16,6 +16,7 @@ dependencies = [
 taxi-lakehouse-download = "taxi_lakehouse.cli:main"
 taxi-lakehouse-generate-sample = "taxi_lakehouse.sample_cli:main"
 taxi-lakehouse-profile-sample = "taxi_lakehouse.sample_profile_cli:main"
+taxi-lakehouse-ingest-bronze = "taxi_lakehouse.bronze_cli:main"
 
 [project.optional-dependencies]
 dev = [
