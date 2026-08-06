@@ -59,7 +59,7 @@ def _materialize_and_write(
         row_count = cached_frame.count()
         write_operation(cached_frame)
     finally:
-        cached_frame.unpersist()
+        cached_frame.unpersist(blocking=True)
 
     return row_count
 

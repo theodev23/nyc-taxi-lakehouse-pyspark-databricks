@@ -31,6 +31,7 @@ class FakeFrame:
         self.cache_count = 0
         self.count_count = 0
         self.unpersist_count = 0
+        self.unpersist_blocking_values: list[bool] = []
 
     def cache(self) -> "FakeFrame":
         """Record one cache request."""
@@ -50,9 +51,13 @@ class FakeFrame:
 
         return self.row_count
 
-    def unpersist(self) -> "FakeFrame":
+    def unpersist(
+        self,
+        blocking: bool = False,
+    ) -> "FakeFrame":
         """Record release of the cached frame."""
         self.unpersist_count += 1
+        self.unpersist_blocking_values.append(blocking)
 
         if self.events is not None:
             self.events.append(f"unpersist:{self.label}")
@@ -123,6 +128,7 @@ def test_materialize_and_write_releases_cached_frame() -> None:
     assert frame.cache_count == 1
     assert frame.count_count == 1
     assert frame.unpersist_count == 1
+    assert frame.unpersist_blocking_values == [True]
 
 
 def test_materialize_and_write_releases_frame_after_failure() -> None:
@@ -148,6 +154,7 @@ def test_materialize_and_write_releases_frame_after_failure() -> None:
     assert frame.cache_count == 1
     assert frame.count_count == 1
     assert frame.unpersist_count == 1
+    assert frame.unpersist_blocking_values == [True]
 
 
 def test_ingest_bronze_dataset_orchestrates_all_sources(
