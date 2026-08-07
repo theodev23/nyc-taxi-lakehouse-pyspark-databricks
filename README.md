@@ -4,9 +4,9 @@ A reproducible Data Engineering project based on NYC TLC Yellow Taxi data.
 
 The project currently provides a validated source-data foundation, a
 deterministic stratified sample, automated data profiling, command-line tools,
-tests, continuous integration, and a production-style Bronze Delta Lake layer.
-Future phases will extend this foundation into Silver quality processing and
-Gold analytical models.
+tests, continuous integration, and production-style Bronze and Silver Delta
+Lake layers. Future phases will extend this foundation into Gold analytical
+models and Databricks-compatible delivery.
 
 ## Current status
 
@@ -25,12 +25,18 @@ Completed:
 - Bronze Delta ingestion for all six monthly trip sources;
 - Bronze taxi-zone snapshot ingestion;
 - source-file, checksum, source-month, and UTC ingestion lineage;
-- idempotent monthly partition replacement for trip data.
+- idempotent monthly partition replacement for trip data;
+- versioned Silver data-quality contract;
+- explicit rejection rules and retained quality flags;
+- Silver accepted and rejected Delta datasets;
+- multiple rejection reasons and quality flags per trip;
+- automatic Bronze source-month discovery for Silver processing;
+- idempotent monthly Silver partition replacement;
+- memory-conscious local Silver execution with bounded Spark parallelism;
+- end-to-end Silver validation across all 20,332,093 trip rows.
 
 Planned:
 
-- Silver accepted and rejected datasets;
-- explicit data-quality rules and rejection reasons;
 - Gold analytical tables and business metrics;
 - Databricks-compatible execution and documentation.
 
@@ -63,16 +69,22 @@ flowchart LR
 
     D --> E[Bronze trip ingestion]
     D --> F[Bronze taxi-zone ingestion]
-    E --> G[Delta trips partitioned by source month]
-    F --> H[Delta taxi-zone snapshot]
+    E --> G[Bronze Delta trips by source month]
+    F --> H[Bronze Delta taxi-zone snapshot]
 
     D --> I[Deterministic stratified sampler]
     I --> J[Versioned sample files]
     J --> K[Sample manifest and profile]
 
-    G --> L[Future Silver accepted and rejected]
+    G --> L[Silver quality transformation]
     H --> L
-    L --> M[Future Gold analytical models]
+    Q[data/silver_quality_spec.json] --> L
+
+    L --> M[Silver accepted Delta trips]
+    L --> N[Silver rejected Delta trips]
+
+    M --> O[Future Gold analytical models]
+    N --> O
 ```
 
 ## Deterministic sampling
@@ -150,7 +162,7 @@ Five columns contain 302 null values each:
 | `total_amount` | -87.15 | 1,617.50 |
 
 The profile also contains out-of-period timestamps ranging from 2002 to 2026.
-These values are retained to exercise future data-quality rules rather than
+These values are retained to exercise the Silver data-quality rules rather than
 hide problems present in the source data.
 
 ## Versioned artifacts
@@ -158,6 +170,7 @@ hide problems present in the source data.
 | Path | Purpose |
 |---|---|
 | `data/source_manifest.json` | Metadata and integrity information for raw sources |
+| `data/silver_quality_spec.json` | Versioned Silver data-quality contract |
 | `data/sample/sample_spec.json` | Deterministic sampling contract |
 | `data/sample/sample_manifest.json` | Sample metadata and checksums |
 | `data/sample/sample_profile.json` | Deterministic sample profile |
@@ -205,6 +218,66 @@ therefore preserve the active row counts instead of appending duplicates.
 The generated Delta tables are local runtime artifacts and are excluded from
 Git through the `data/lakehouse/` ignore rule.
 
+## Silver Delta layer
+
+The command `taxi-lakehouse-build-silver` reads the Bronze trip and taxi-zone
+Delta tables and applies the versioned contract in
+`data/silver_quality_spec.json`.
+
+Each trip keeps all 24 Bronze columns and receives two additional array columns:
+
+- `_rejection_reasons` records every matching hard rejection rule;
+- `_quality_flags` records every matching retained quality condition.
+
+A row is written to the rejected table when `_rejection_reasons` contains at
+least one value. Otherwise, it is written to the accepted table. Multiple
+rejection reasons and quality flags can therefore be retained on the same trip.
+
+Hard rejection rules:
+
+- `pickup_zone_unknown`;
+- `dropoff_zone_unknown`;
+- `distance_negative`;
+- `duration_nonpositive`;
+- `duration_over_24h`;
+- `pickup_outside_month`;
+- `passenger_over_6`.
+
+Retained quality flags:
+
+- `total_amount_zero`;
+- `total_amount_negative`;
+- `passenger_nonpositive`;
+- `distance_zero`;
+- `passenger_missing`.
+
+| Delta table | Default path | Active rows | Columns |
+|---|---|---:|---:|
+| Accepted trips | `data/lakehouse/silver/yellow_taxi_trips_accepted` | 20,325,497 | 26 |
+| Rejected trips | `data/lakehouse/silver/yellow_taxi_trips_rejected` | 6,596 | 26 |
+
+Both tables are partitioned by `_source_month` and use Delta Lake
+`replaceWhere` predicates for idempotent monthly replacement.
+
+| Source month | Accepted | Rejected | Total |
+|---|---:|---:|---:|
+| 2024-01 | 2,963,660 | 964 | 2,964,624 |
+| 2024-02 | 3,006,676 | 850 | 3,007,526 |
+| 2024-03 | 3,581,438 | 1,190 | 3,582,628 |
+| 2024-04 | 3,513,144 | 1,145 | 3,514,289 |
+| 2024-05 | 3,722,613 | 1,220 | 3,723,833 |
+| 2024-06 | 3,537,966 | 1,227 | 3,539,193 |
+| **Total** | **20,325,497** | **6,596** | **20,332,093** |
+
+The active Delta state was validated independently after the complete build:
+all six source months are present, accepted and rejected counts conserve the
+20,332,093 Bronze trip rows, accepted rows have no rejection reasons, and every
+rejected row has at least one rejection reason.
+
+Local Silver execution uses two Spark worker threads to keep Delta write
+parallelism compatible with the memory available in the development
+environment.
+
 ## Requirements
 
 - Python 3.12;
@@ -241,6 +314,7 @@ taxi-lakehouse-download --help
 taxi-lakehouse-generate-sample --help
 taxi-lakehouse-profile-sample --help
 taxi-lakehouse-ingest-bronze --help
+taxi-lakehouse-build-silver --help
 ```
 
 Generate the deterministic sample from the local landing files:
@@ -271,6 +345,19 @@ taxi-lakehouse-ingest-bronze \
   --bronze-root data/lakehouse/bronze
 ```
 
+Build the Silver accepted and rejected Delta tables from Bronze:
+
+```bash
+taxi-lakehouse-build-silver
+```
+
+Override the default Silver quality specification when required:
+
+```bash
+taxi-lakehouse-build-silver \
+  --specification data/silver_quality_spec.json
+```
+
 ## Tests and code quality
 
 Run the complete test suite:
@@ -286,7 +373,7 @@ ruff check .
 ruff format --check .
 ```
 
-At the current project stage, the suite contains 109 tests.
+At the current project stage, the suite contains 143 tests.
 
 ## Continuous integration
 
@@ -310,8 +397,10 @@ The workflow:
 ├── data
 │   ├── landing/                     # Local source files excluded from Git
 │   ├── lakehouse/                   # Local Delta tables excluded from Git
-│   │   └── bronze/
+│   │   ├── bronze/
+│   │   └── silver/
 │   ├── source_manifest.json
+│   ├── silver_quality_spec.json
 │   └── sample
 │       ├── sample_spec.json
 │       ├── sample_manifest.json
@@ -327,6 +416,7 @@ The workflow:
 │   ├── bronze_writing.py
 │   ├── cli.py
 │   ├── data_acquisition.py
+│   ├── quality_rules.py
 │   ├── sample_artifacts.py
 │   ├── sample_generation.py
 │   ├── sample_manifest.py
@@ -335,6 +425,12 @@ The workflow:
 │   ├── sample_profile_artifact.py
 │   ├── sample_profiling.py
 │   ├── sample_specification.py
+│   ├── silver_cli.py
+│   ├── silver_loading.py
+│   ├── silver_orchestration.py
+│   ├── silver_quality_specification.py
+│   ├── silver_transformation.py
+│   ├── silver_writing.py
 │   └── spark_session.py
 ├── tests
 │   ├── integration/
@@ -344,9 +440,9 @@ The workflow:
 ```
 
 The package separates acquisition, sampling, profiling, shared Spark session
-construction, Bronze source resolution, schema enforcement, loading, Delta
-writing, orchestration, and command-line execution so that each component can
-be tested independently.
+construction, Bronze ingestion, shared quality rules, Silver specification
+loading, quality transformation, Delta writing, orchestration, and
+command-line execution so that each component can be tested independently.
 
 ## Roadmap
 
@@ -366,10 +462,12 @@ be tested independently.
 
 ### Phase 3 — Silver layer
 
-- [ ] Standardize schemas, timestamps, and numeric values.
-- [ ] Apply explicit data-quality rules.
-- [ ] Separate accepted and rejected records.
-- [ ] Record rejection reasons and quality metrics.
+- [x] Define a versioned Silver data-quality contract.
+- [x] Apply explicit rejection rules and retained quality flags.
+- [x] Separate accepted and rejected records.
+- [x] Preserve multiple rejection reasons and quality flags per trip.
+- [x] Support idempotent monthly Delta replacement.
+- [x] Validate the complete Silver layer across all 20,332,093 trip rows.
 
 ### Phase 4 — Gold layer
 
