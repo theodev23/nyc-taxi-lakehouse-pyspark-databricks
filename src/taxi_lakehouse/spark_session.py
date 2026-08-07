@@ -12,10 +12,11 @@ def build_local_spark_session(
     app_name: str,
     *,
     enable_delta: bool = False,
+    master: str = DEFAULT_LOCAL_MASTER,
 ) -> SparkSession:
     """Create a consistently configured local Spark session."""
     builder = (
-        SparkSession.builder.master(DEFAULT_LOCAL_MASTER)
+        SparkSession.builder.master(master)
         .appName(app_name)
         .config("spark.ui.enabled", "false")
         .config("spark.sql.session.timeZone", "UTC")

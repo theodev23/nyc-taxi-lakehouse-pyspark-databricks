@@ -14,6 +14,7 @@ from taxi_lakehouse.silver_orchestration import (
 from taxi_lakehouse.spark_session import build_local_spark_session
 
 DEFAULT_SPECIFICATION_PATH = Path("data/silver_quality_spec.json")
+SILVER_LOCAL_MASTER = "local[2]"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,6 +41,7 @@ def build_spark_session() -> SparkSession:
     return build_local_spark_session(
         "nyc-taxi-silver-build",
         enable_delta=True,
+        master=SILVER_LOCAL_MASTER,
     )
 
 

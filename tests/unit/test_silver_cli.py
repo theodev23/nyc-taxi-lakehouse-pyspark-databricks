@@ -85,11 +85,13 @@ def test_build_spark_session_enables_delta(
         app_name: str,
         *,
         enable_delta: bool = False,
+        master: str = "local[*]",
     ) -> FakeSparkSession:
         captured_arguments.update(
             {
                 "app_name": app_name,
                 "enable_delta": enable_delta,
+                "master": master,
             }
         )
         return spark
@@ -106,6 +108,7 @@ def test_build_spark_session_enables_delta(
     assert captured_arguments == {
         "app_name": "nyc-taxi-silver-build",
         "enable_delta": True,
+        "master": "local[2]",
     }
 
 
