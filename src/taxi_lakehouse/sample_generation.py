@@ -1,7 +1,6 @@
 """PySpark transformations for deterministic sample generation."""
 
 import hashlib
-from datetime import datetime
 
 from pyspark.sql import Column, DataFrame
 from pyspark.sql import functions as F
@@ -10,40 +9,10 @@ from pyspark.sql.window import Window
 from taxi_lakehouse.quality_rules import (
     QUALITY_RULE_NAMES,
     build_quality_rule_conditions,
+    source_month_bounds,
 )
 
 QUALITY_BUCKET_NAMES = QUALITY_RULE_NAMES | frozenset({"normal"})
-
-
-def source_month_bounds(
-    source_month: str,
-) -> tuple[datetime, datetime]:
-    """Return inclusive start and exclusive end timestamps for a month."""
-    try:
-        month_start = datetime.strptime(
-            source_month,
-            "%Y-%m",
-        )
-    except ValueError as error:
-        raise ValueError(f"Invalid source month: {source_month!r}.") from error
-
-    if month_start.strftime("%Y-%m") != source_month:
-        raise ValueError(f"Invalid source month: {source_month!r}.")
-
-    if month_start.month == 12:
-        month_end = datetime(
-            month_start.year + 1,
-            1,
-            1,
-        )
-    else:
-        month_end = datetime(
-            month_start.year,
-            month_start.month + 1,
-            1,
-        )
-
-    return month_start, month_end
 
 
 def build_quality_bucket_expression(
