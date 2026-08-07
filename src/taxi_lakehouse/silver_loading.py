@@ -30,6 +30,39 @@ def load_bronze_trip_month(
     return frame.filter(F.col(BRONZE_TRIP_PARTITION_COLUMN) == source_month)
 
 
+def load_bronze_source_months(
+    spark: SparkSession,
+    source_path: Path,
+) -> tuple[str, ...]:
+    """Load the ordered source-month domain from Bronze trips."""
+    frame = spark.read.format("delta").load(source_path.as_posix())
+
+    if BRONZE_TRIP_PARTITION_COLUMN not in frame.columns:
+        raise ValueError(
+            "Bronze trip DataFrame must contain "
+            f"column {BRONZE_TRIP_PARTITION_COLUMN!r}."
+        )
+
+    source_months = tuple(
+        row[BRONZE_TRIP_PARTITION_COLUMN]
+        for row in (
+            frame.select(BRONZE_TRIP_PARTITION_COLUMN)
+            .where(F.col(BRONZE_TRIP_PARTITION_COLUMN).isNotNull())
+            .distinct()
+            .orderBy(BRONZE_TRIP_PARTITION_COLUMN)
+            .collect()
+        )
+    )
+
+    if not source_months:
+        raise ValueError("Bronze trip table must contain at least one source month.")
+
+    for source_month in source_months:
+        source_month_bounds(source_month)
+
+    return source_months
+
+
 def load_bronze_zone_ids(
     spark: SparkSession,
     source_path: Path,

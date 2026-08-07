@@ -11,6 +11,7 @@ from pyspark.sql.types import (
 )
 
 from taxi_lakehouse.silver_loading import (
+    load_bronze_source_months,
     load_bronze_trip_month,
     load_bronze_zone_ids,
 )
@@ -70,6 +71,62 @@ def test_load_bronze_trip_month_filters_requested_partition(
         (1, "2024-01"),
         (2, "2024-01"),
     ]
+
+
+def test_load_bronze_source_months_returns_sorted_domain(
+    delta_spark: SparkSession,
+    tmp_path: Path,
+) -> None:
+    """Source-month discovery should return sorted unique partitions."""
+    source_path = tmp_path / "source_month_domain"
+
+    frame = delta_spark.createDataFrame(
+        [
+            (1, "2024-03"),
+            (2, "2024-01"),
+            (3, "2024-02"),
+            (4, "2024-01"),
+        ],
+        "trip_id long, _source_month string",
+    )
+
+    (
+        frame.write.format("delta")
+        .partitionBy("_source_month")
+        .save(source_path.as_posix())
+    )
+
+    assert load_bronze_source_months(
+        delta_spark,
+        source_path,
+    ) == (
+        "2024-01",
+        "2024-02",
+        "2024-03",
+    )
+
+
+def test_load_bronze_source_months_requires_nonempty_domain(
+    delta_spark: SparkSession,
+    tmp_path: Path,
+) -> None:
+    """Source-month discovery should reject an all-null domain."""
+    source_path = tmp_path / "empty_source_month_domain"
+
+    frame = delta_spark.createDataFrame(
+        [(1, None)],
+        "trip_id long, _source_month string",
+    )
+    frame.write.format("delta").save(source_path.as_posix())
+
+    with pytest.raises(
+        ValueError,
+        match="must contain at least one source month",
+    ):
+        load_bronze_source_months(
+            delta_spark,
+            source_path,
+        )
 
 
 def test_load_bronze_trip_month_rejects_invalid_month(
