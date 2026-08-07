@@ -1,0 +1,70 @@
+{
+  "schema_version": "1.0",
+  "description": "Silver data-quality contract for NYC TLC Yellow Taxi trips.",
+  "source_layer": "bronze",
+  "source_trip_table": "data/lakehouse/bronze/yellow_taxi_trips",
+  "source_taxi_zone_table": "data/lakehouse/bronze/taxi_zones",
+  "output": {
+    "accepted_table": "data/lakehouse/silver/yellow_taxi_trips_accepted",
+    "rejected_table": "data/lakehouse/silver/yellow_taxi_trips_rejected",
+    "partition_column": "_source_month"
+  },
+  "quality_contract": {
+    "allow_multiple_rejection_reasons": true,
+    "allow_multiple_quality_flags": true,
+    "rejection_reason_column": "_rejection_reasons",
+    "quality_flag_column": "_quality_flags",
+    "rejection_rules": [
+      {
+        "name": "pickup_zone_unknown",
+        "description": "Pickup location is null or absent from the taxi-zone reference domain."
+      },
+      {
+        "name": "dropoff_zone_unknown",
+        "description": "Dropoff location is null or absent from the taxi-zone reference domain."
+      },
+      {
+        "name": "distance_negative",
+        "description": "Trip distance is strictly negative."
+      },
+      {
+        "name": "duration_nonpositive",
+        "description": "Trip duration is missing, zero, or negative."
+      },
+      {
+        "name": "duration_over_24h",
+        "description": "Trip duration exceeds 24 hours."
+      },
+      {
+        "name": "pickup_outside_month",
+        "description": "Pickup timestamp falls outside the declared source month."
+      },
+      {
+        "name": "passenger_over_6",
+        "description": "Passenger count is greater than six."
+      }
+    ],
+    "quality_flag_rules": [
+      {
+        "name": "total_amount_zero",
+        "description": "Total trip amount is exactly zero."
+      },
+      {
+        "name": "total_amount_negative",
+        "description": "Total trip amount is negative."
+      },
+      {
+        "name": "passenger_nonpositive",
+        "description": "Passenger count is present but zero or negative."
+      },
+      {
+        "name": "distance_zero",
+        "description": "Trip distance is exactly zero."
+      },
+      {
+        "name": "passenger_missing",
+        "description": "Passenger count is null."
+      }
+    ]
+  }
+}

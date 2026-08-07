@@ -66,6 +66,22 @@ def test_build_local_spark_session_uses_shared_defaults(
     }
 
 
+def test_build_local_spark_session_accepts_custom_master(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A caller should be able to limit local Spark concurrency."""
+    builder = FakeBuilder()
+    install_fake_builder(monkeypatch, builder)
+
+    result = spark_session.build_local_spark_session(
+        "memory-sensitive-app",
+        master="local[2]",
+    )
+
+    assert result is builder.created_session
+    assert builder.master_value == "local[2]"
+
+
 def test_build_local_spark_session_configures_delta(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -1,60 +1,18 @@
 """PySpark transformations for deterministic sample generation."""
 
 import hashlib
-from datetime import datetime
 
 from pyspark.sql import Column, DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
-QUALITY_BUCKET_NAMES = frozenset(
-    {
-        "pickup_zone_unknown",
-        "dropoff_zone_unknown",
-        "distance_negative",
-        "duration_over_24h",
-        "passenger_over_6",
-        "total_amount_zero",
-        "duration_nonpositive",
-        "pickup_outside_month",
-        "total_amount_negative",
-        "passenger_nonpositive",
-        "distance_zero",
-        "passenger_missing",
-        "normal",
-    }
+from taxi_lakehouse.quality_rules import (
+    QUALITY_RULE_NAMES,
+    build_quality_rule_conditions,
+    source_month_bounds,
 )
 
-
-def source_month_bounds(
-    source_month: str,
-) -> tuple[datetime, datetime]:
-    """Return inclusive start and exclusive end timestamps for a month."""
-    try:
-        month_start = datetime.strptime(
-            source_month,
-            "%Y-%m",
-        )
-    except ValueError as error:
-        raise ValueError(f"Invalid source month: {source_month!r}.") from error
-
-    if month_start.strftime("%Y-%m") != source_month:
-        raise ValueError(f"Invalid source month: {source_month!r}.")
-
-    if month_start.month == 12:
-        month_end = datetime(
-            month_start.year + 1,
-            1,
-            1,
-        )
-    else:
-        month_end = datetime(
-            month_start.year,
-            month_start.month + 1,
-            1,
-        )
-
-    return month_start, month_end
+QUALITY_BUCKET_NAMES = QUALITY_RULE_NAMES | frozenset({"normal"})
 
 
 def build_quality_bucket_expression(
@@ -99,34 +57,11 @@ def build_quality_bucket_expression(
         "timestamp_ntz"
     )
 
-    pickup = F.col("tpep_pickup_datetime")
-    dropoff = F.col("tpep_dropoff_datetime")
-    passenger_count = F.col("passenger_count")
-    trip_distance = F.col("trip_distance")
-    pickup_zone = F.col("PULocationID")
-    dropoff_zone = F.col("DOLocationID")
-    total_amount = F.col("total_amount")
-
-    duration_seconds = F.unix_timestamp(dropoff) - F.unix_timestamp(pickup)
-
-    conditions = {
-        "pickup_zone_unknown": (pickup_zone.isNull() | ~pickup_zone.isin(*zone_ids)),
-        "dropoff_zone_unknown": (dropoff_zone.isNull() | ~dropoff_zone.isin(*zone_ids)),
-        "distance_negative": (trip_distance < 0),
-        "duration_over_24h": (duration_seconds > 86_400),
-        "passenger_over_6": (passenger_count.isNotNull() & (passenger_count > 6)),
-        "total_amount_zero": (total_amount == 0),
-        "duration_nonpositive": (duration_seconds.isNull() | (duration_seconds <= 0)),
-        "pickup_outside_month": (
-            pickup.isNull()
-            | (pickup < month_start_literal)
-            | (pickup >= month_end_literal)
-        ),
-        "total_amount_negative": (total_amount < 0),
-        "passenger_nonpositive": (passenger_count.isNotNull() & (passenger_count <= 0)),
-        "distance_zero": (trip_distance == 0),
-        "passenger_missing": (passenger_count.isNull()),
-    }
+    conditions = build_quality_rule_conditions(
+        zone_ids,
+        month_start_literal,
+        month_end_literal,
+    )
 
     bucket_expression: Column | None = None
 
