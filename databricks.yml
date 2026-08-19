@@ -1,0 +1,66 @@
+bundle:
+  name: nyc-taxi-lakehouse-pyspark-databricks
+
+variables:
+  catalog:
+    description: Unity Catalog catalog for the lakehouse.
+    default: workspace
+
+  schema:
+    description: Unity Catalog schema for the lakehouse.
+    default: nyc_taxi
+
+  volume:
+    description: Unity Catalog managed volume for source files.
+    default: source_files
+
+resources:
+  schemas:
+    nyc_taxi:
+      name: ${var.schema}
+      catalog_name: ${var.catalog}
+      comment: NYC Taxi lakehouse schema managed by the Databricks bundle.
+
+  volumes:
+    source_files:
+      name: ${var.volume}
+      catalog_name: ${var.catalog}
+      schema_name: ${resources.schemas.nyc_taxi.name}
+      volume_type: MANAGED
+      comment: Landing volume for validated NYC Taxi source files.
+
+  jobs:
+    nyc_taxi_lakehouse:
+      name: nyc-taxi-lakehouse
+
+      tasks:
+        - task_key: bronze
+          notebook_task:
+            notebook_path: ./databricks/notebooks/01_bronze.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${resources.schemas.nyc_taxi.name}
+              volume: ${resources.volumes.source_files.name}
+
+        - task_key: silver
+          depends_on:
+            - task_key: bronze
+          notebook_task:
+            notebook_path: ./databricks/notebooks/02_silver.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${resources.schemas.nyc_taxi.name}
+              volume: ${resources.volumes.source_files.name}
+
+        - task_key: gold
+          depends_on:
+            - task_key: silver
+          notebook_task:
+            notebook_path: ./databricks/notebooks/03_gold.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              schema: ${resources.schemas.nyc_taxi.name}
+              volume: ${resources.volumes.source_files.name}
