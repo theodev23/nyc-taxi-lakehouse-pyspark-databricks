@@ -18,6 +18,7 @@ taxi-lakehouse-generate-sample = "taxi_lakehouse.sample_cli:main"
 taxi-lakehouse-profile-sample = "taxi_lakehouse.sample_profile_cli:main"
 taxi-lakehouse-ingest-bronze = "taxi_lakehouse.bronze_cli:main"
 taxi-lakehouse-build-silver = "taxi_lakehouse.silver_cli:main"
+taxi-lakehouse-build-gold = "taxi_lakehouse.gold_cli:main"
 
 [project.optional-dependencies]
 dev = [
