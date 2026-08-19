@@ -1,0 +1,71 @@
+{
+  "schema_version": "1.0",
+  "description": "Gold analytical contract for accepted NYC TLC Yellow Taxi trips.",
+  "source": {
+    "accepted_trip_table": "data/lakehouse/silver/yellow_taxi_trips_accepted",
+    "taxi_zone_table": "data/lakehouse/bronze/taxi_zones"
+  },
+  "outputs": {
+    "trip_metrics": {
+      "table": "data/lakehouse/gold/trip_metrics_by_date_pickup_zone_payment",
+      "partition_column": "_source_month",
+      "grain": [
+        "_source_month",
+        "pickup_date",
+        "pickup_location_id",
+        "payment_type"
+      ],
+      "dimensions": [
+        "pickup_borough",
+        "pickup_zone",
+        "pickup_service_zone"
+      ]
+    },
+    "daily_metrics": {
+      "table": "data/lakehouse/gold/daily_trip_metrics",
+      "partition_column": "_source_month",
+      "grain": [
+        "_source_month",
+        "pickup_date"
+      ]
+    }
+  },
+  "metrics": [
+    {
+      "name": "trip_count",
+      "description": "Number of accepted Silver trips in the analytical group."
+    },
+    {
+      "name": "quality_flagged_trip_count",
+      "description": "Number of accepted Silver trips with at least one retained quality flag."
+    },
+    {
+      "name": "trip_distance_sum",
+      "description": "Sum of trip_distance values in the analytical group."
+    },
+    {
+      "name": "trip_distance_avg",
+      "description": "Average trip_distance value in the analytical group."
+    },
+    {
+      "name": "trip_duration_minutes_avg",
+      "description": "Average trip duration in minutes derived from pickup and dropoff timestamps."
+    },
+    {
+      "name": "fare_amount_sum",
+      "description": "Sum of fare_amount values in the analytical group."
+    },
+    {
+      "name": "tip_amount_sum",
+      "description": "Sum of tip_amount values in the analytical group."
+    },
+    {
+      "name": "total_amount_sum",
+      "description": "Sum of total_amount values in the analytical group."
+    },
+    {
+      "name": "total_amount_avg",
+      "description": "Average total_amount value in the analytical group."
+    }
+  ]
+}
