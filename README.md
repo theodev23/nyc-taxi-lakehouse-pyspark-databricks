@@ -2,11 +2,11 @@
 
 A reproducible Data Engineering project based on NYC TLC Yellow Taxi data.
 
-The project currently provides a validated source-data foundation, a
-deterministic stratified sample, automated data profiling, command-line tools,
-tests, continuous integration, and production-style Bronze, Silver, and Gold
-Delta Lake layers. The remaining project phase focuses on
-Databricks-compatible delivery.
+The project provides a validated source-data foundation, a deterministic
+stratified sample, automated data profiling, command-line tools, tests,
+continuous integration, production-style Bronze, Silver, and Gold Delta Lake
+layers, and an end-to-end Databricks Free Edition deployment backed by Unity
+Catalog managed tables.
 
 ## Current status
 
@@ -39,11 +39,13 @@ Completed:
 - daily Gold business metrics;
 - idempotent monthly Gold Delta replacement;
 - validated preservation of all 20,325,497 accepted Silver trips;
-- versioned Spark SQL analytical and validation queries.
-
-Planned:
-
-- Databricks-compatible execution and documentation.
+- versioned Spark SQL analytical and validation queries;
+- Databricks Free Edition serverless execution;
+- Unity Catalog managed schema, source Volume, and Bronze/Silver/Gold tables;
+- versioned Databricks notebooks and Declarative Automation Bundle;
+- end-to-end Bronze -> Silver -> Gold Databricks job execution;
+- validated Databricks row counts matching the complete local pipeline;
+- validated idempotence across consecutive Databricks runs.
 
 ## Dataset
 
@@ -363,6 +365,55 @@ definitions, were executed successfully against the complete local Gold layer.
 Local Gold execution uses two Spark worker threads to keep aggregation and
 Delta-write parallelism bounded in the development environment.
 
+## Databricks delivery
+
+The local transformation contracts and PySpark transformations are reused in
+Databricks through thin Unity Catalog I/O and orchestration adapters. Databricks
+execution uses the Spark session supplied by the runtime and does not create a
+local Spark session or depend on `SparkContext`, `cache()`, or `persist()`.
+
+The deployment uses:
+
+- the managed Unity Catalog schema `workspace.nyc_taxi`;
+- the managed Volume `workspace.nyc_taxi.source_files`;
+- source files under `/Volumes/workspace/nyc_taxi/source_files/landing`;
+- managed Unity Catalog tables for Bronze, Silver, and Gold;
+- source notebooks under `databricks/notebooks/`;
+- `databricks.yml` as the Declarative Automation Bundle definition;
+- a serverless Databricks job with the dependency graph
+  `bronze -> silver -> gold`.
+
+The managed tables are:
+
+| Layer | Unity Catalog table | Active rows |
+|---|---|---:|
+| Bronze | `workspace.nyc_taxi.bronze_yellow_taxi_trips` | 20,332,093 |
+| Bronze | `workspace.nyc_taxi.bronze_taxi_zones` | 265 |
+| Silver | `workspace.nyc_taxi.silver_yellow_taxi_trips_accepted` | 20,325,497 |
+| Silver | `workspace.nyc_taxi.silver_yellow_taxi_trips_rejected` | 6,596 |
+| Gold | `workspace.nyc_taxi.gold_trip_metrics_by_date_pickup_zone_payment` | 128,335 |
+| Gold | `workspace.nyc_taxi.gold_daily_trip_metrics` | 182 |
+
+The Databricks workflow is deployed and operated through the CLI:
+
+```bash
+databricks bundle validate --strict
+databricks bundle plan
+databricks bundle deploy
+databricks bundle run nyc_taxi_lakehouse
+```
+
+Before the first Bronze run, the seven validated source files are copied to the
+managed landing Volume. The versioned source manifest remains the authority for
+expected filenames, file sizes, source months, and SHA-256 checksums.
+
+Two consecutive complete Databricks runs finished successfully. The second run
+preserved exactly the same six table row counts as the first run, validating
+idempotent Bronze, Silver, and Gold replacement behavior. Silver conservation
+was also preserved exactly:
+
+`20,325,497 accepted + 6,596 rejected = 20,332,093 Bronze trips`.
+
 ## Requirements
 
 - Python 3.12;
@@ -472,7 +523,7 @@ ruff check .
 ruff format --check .
 ```
 
-At the current project stage, the suite contains 177 tests.
+The complete suite contains 229 tests.
 
 ## Continuous integration
 
@@ -508,6 +559,12 @@ The workflow:
 │       ├── sample_profile.json
 │       ├── taxi_zone_lookup.csv
 │       └── yellow_tripdata_2024-*.parquet
+├── databricks
+│   └── notebooks
+│       ├── _bootstrap.py
+│       ├── 01_bronze.py
+│       ├── 02_silver.py
+│       └── 03_gold.py
 ├── src/taxi_lakehouse
 │   ├── bronze_cli.py
 │   ├── bronze_loading.py
@@ -517,6 +574,14 @@ The workflow:
 │   ├── bronze_writing.py
 │   ├── cli.py
 │   ├── data_acquisition.py
+│   ├── databricks_bronze_io.py
+│   ├── databricks_bronze_orchestration.py
+│   ├── databricks_configuration.py
+│   ├── databricks_gold_io.py
+│   ├── databricks_gold_orchestration.py
+│   ├── databricks_silver_io.py
+│   ├── databricks_silver_orchestration.py
+│   ├── databricks_table_io.py
 │   ├── quality_rules.py
 │   ├── sample_artifacts.py
 │   ├── sample_generation.py
@@ -544,6 +609,7 @@ The workflow:
 ├── tests
 │   ├── integration/
 │   └── unit/
+├── databricks.yml
 ├── pyproject.toml
 └── README.md
 ```
@@ -552,6 +618,9 @@ The package separates acquisition, sampling, profiling, shared Spark session
 construction, Bronze ingestion, shared quality rules, Silver specification
 loading, quality transformation, Gold analytics, Delta writing, orchestration,
 and command-line execution so that each component can be tested independently.
+Databricks-specific modules provide thin Unity Catalog I/O and orchestration
+adapters, while the source notebooks and bundle configuration provide serverless
+deployment and end-to-end workflow execution without duplicating business logic.
 
 ## Roadmap
 
@@ -586,6 +655,9 @@ and command-line execution so that each component can be tested independently.
 
 ### Phase 5 — Databricks delivery
 
-- [ ] Adapt the pipeline for Databricks Free Edition.
-- [ ] Add notebooks or jobs for end-to-end execution.
-- [ ] Document the final architecture and operational workflow.
+- [x] Adapt the pipeline for Databricks Free Edition.
+- [x] Add notebooks and a serverless job for end-to-end execution.
+- [x] Provision Unity Catalog resources through a versioned bundle.
+- [x] Validate complete Bronze, Silver, and Gold row counts in Databricks.
+- [x] Validate idempotence across consecutive end-to-end runs.
+- [x] Document the final architecture and operational workflow.

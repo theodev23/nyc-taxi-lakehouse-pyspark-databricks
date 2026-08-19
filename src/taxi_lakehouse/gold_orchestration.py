@@ -77,28 +77,39 @@ def _materialize_and_write_month(
     analytics_frames: GoldAnalyticsFrames,
     specification: GoldAnalyticsSpecification,
     source_month: str,
+    *,
+    use_cache: bool = True,
 ) -> tuple[int, int]:
-    """Cache, count, write, and release one month of Gold aggregates."""
-    cached_trip_metrics = analytics_frames.trip_metrics.cache()
-    cached_daily_metrics = analytics_frames.daily_metrics.cache()
+    """Count and write one month of Gold aggregates with optional caching."""
+    trip_metrics = (
+        analytics_frames.trip_metrics.cache()
+        if use_cache
+        else analytics_frames.trip_metrics
+    )
+    daily_metrics = (
+        analytics_frames.daily_metrics.cache()
+        if use_cache
+        else analytics_frames.daily_metrics
+    )
 
     try:
-        trip_metrics_row_count = cached_trip_metrics.count()
-        daily_metrics_row_count = cached_daily_metrics.count()
+        trip_metrics_row_count = trip_metrics.count()
+        daily_metrics_row_count = daily_metrics.count()
 
         write_gold_month(
-            cached_trip_metrics,
+            trip_metrics,
             specification.outputs.trip_metrics.table,
             source_month,
         )
         write_gold_month(
-            cached_daily_metrics,
+            daily_metrics,
             specification.outputs.daily_metrics.table,
             source_month,
         )
     finally:
-        cached_daily_metrics.unpersist(blocking=True)
-        cached_trip_metrics.unpersist(blocking=True)
+        if use_cache:
+            daily_metrics.unpersist(blocking=True)
+            trip_metrics.unpersist(blocking=True)
 
     return (
         trip_metrics_row_count,
@@ -109,6 +120,8 @@ def _materialize_and_write_month(
 def build_gold_dataset(
     spark: SparkSession,
     specification_path: Path,
+    *,
+    use_cache: bool = True,
 ) -> GoldBuildResult:
     """Build Gold analytical Delta tables from Silver accepted trips."""
     specification = load_gold_analytics_specification(specification_path)
@@ -118,13 +131,14 @@ def build_gold_dataset(
         specification.source.accepted_trip_table,
     )
 
-    cached_zones = load_taxi_zones(
+    zones = load_taxi_zones(
         spark,
         specification.source.taxi_zone_table,
-    ).cache()
+    )
+    materialized_zones = zones.cache() if use_cache else zones
 
     try:
-        taxi_zone_row_count = _validate_taxi_zone_reference(cached_zones)
+        taxi_zone_row_count = _validate_taxi_zone_reference(materialized_zones)
 
         monthly_writes: list[GoldMonthWriteResult] = []
 
@@ -137,7 +151,7 @@ def build_gold_dataset(
 
             analytics_frames = build_gold_analytics_frames(
                 silver_frame,
-                cached_zones,
+                materialized_zones,
                 specification,
             )
 
@@ -148,6 +162,7 @@ def build_gold_dataset(
                 analytics_frames,
                 specification,
                 source_month,
+                use_cache=use_cache,
             )
 
             monthly_writes.append(
@@ -164,7 +179,8 @@ def build_gold_dataset(
                 )
             )
     finally:
-        cached_zones.unpersist(blocking=True)
+        if use_cache:
+            materialized_zones.unpersist(blocking=True)
 
     return GoldBuildResult(
         specification=specification,

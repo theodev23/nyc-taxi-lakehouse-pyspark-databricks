@@ -1,9 +1,8 @@
-"""End-to-end orchestration for Bronze Delta ingestion."""
+"""Bronze orchestration for Databricks Unity Catalog execution."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
-from functools import partial
 from pathlib import Path
 
 from pyspark.sql import DataFrame, SparkSession
@@ -17,78 +16,64 @@ from taxi_lakehouse.bronze_sources import (
     ResolvedBronzeSources,
     resolve_bronze_sources,
 )
-from taxi_lakehouse.bronze_writing import (
-    write_bronze_taxi_zones,
-    write_bronze_trip_month,
-)
 from taxi_lakehouse.data_acquisition import load_source_files
-
-BRONZE_TRIP_DIRECTORY_NAME = "yellow_taxi_trips"
-BRONZE_TAXI_ZONE_DIRECTORY_NAME = "taxi_zones"
+from taxi_lakehouse.databricks_bronze_io import (
+    write_managed_bronze_taxi_zones,
+    write_managed_bronze_trip_month,
+)
+from taxi_lakehouse.databricks_configuration import (
+    DatabricksPipelineConfiguration,
+)
 
 
 @dataclass(frozen=True, slots=True)
-class BronzeTripWriteResult:
-    """Metadata describing one monthly Bronze trip write."""
+class DatabricksBronzeTripWriteResult:
+    """Metadata for one Databricks Bronze trip month."""
 
     source_month: str
     source_path: Path
-    destination_path: Path
+    destination_table: str
     row_count: int
 
 
 @dataclass(frozen=True, slots=True)
-class BronzeIngestionResult:
-    """Metadata describing one complete Bronze ingestion run."""
+class DatabricksBronzeIngestionResult:
+    """Metadata for one complete Databricks Bronze ingestion."""
 
     ingested_at_utc: datetime
     resolved_sources: ResolvedBronzeSources
-    monthly_trip_writes: tuple[BronzeTripWriteResult, ...]
-    taxi_zone_destination_path: Path
+    configuration: DatabricksPipelineConfiguration
+    monthly_trip_writes: tuple[DatabricksBronzeTripWriteResult, ...]
+    taxi_zone_destination_table: str
     taxi_zone_row_count: int
 
 
 def _materialize_and_write(
     frame: DataFrame,
     write_operation: Callable[[DataFrame], None],
-    *,
-    use_cache: bool = True,
 ) -> int:
-    """Count and write one source DataFrame with optional caching."""
-    materialized_frame = frame.cache() if use_cache else frame
-
-    try:
-        row_count = materialized_frame.count()
-        write_operation(materialized_frame)
-    finally:
-        if use_cache:
-            materialized_frame.unpersist(blocking=True)
-
+    """Count and write one Bronze frame without Spark caching."""
+    row_count = frame.count()
+    write_operation(frame)
     return row_count
 
 
-def ingest_bronze_dataset(
+def ingest_databricks_bronze_dataset(
     spark: SparkSession,
     manifest_path: Path,
-    landing_directory: Path,
-    bronze_root: Path,
+    configuration: DatabricksPipelineConfiguration,
     ingested_at_utc: datetime,
-    *,
-    use_cache: bool = True,
-) -> BronzeIngestionResult:
-    """Load all validated sources into the Bronze Delta layer."""
+) -> DatabricksBronzeIngestionResult:
+    """Load validated Volume sources into managed Bronze tables."""
     format_utc_timestamp_ntz(ingested_at_utc)
 
     source_files = load_source_files(manifest_path)
     resolved_sources = resolve_bronze_sources(
         source_files,
-        landing_directory,
+        configuration.landing_directory,
     )
 
-    trip_destination_path = bronze_root / BRONZE_TRIP_DIRECTORY_NAME
-    taxi_zone_destination_path = bronze_root / BRONZE_TAXI_ZONE_DIRECTORY_NAME
-
-    monthly_trip_writes: list[BronzeTripWriteResult] = []
+    monthly_trip_writes: list[DatabricksBronzeTripWriteResult] = []
 
     for monthly_source in resolved_sources.monthly_trip_sources:
         trip_frame = load_bronze_trip_source(
@@ -97,23 +82,26 @@ def ingest_bronze_dataset(
             ingested_at_utc,
         )
 
-        write_trip_frame = partial(
-            write_bronze_trip_month,
-            destination_path=trip_destination_path,
-            source_month=monthly_source.source_month,
-        )
+        def write_trip_frame(
+            frame: DataFrame,
+            source_month: str = monthly_source.source_month,
+        ) -> None:
+            write_managed_bronze_trip_month(
+                frame,
+                configuration.bronze_trip_table,
+                source_month,
+            )
 
         row_count = _materialize_and_write(
             trip_frame,
             write_trip_frame,
-            use_cache=use_cache,
         )
 
         monthly_trip_writes.append(
-            BronzeTripWriteResult(
+            DatabricksBronzeTripWriteResult(
                 source_month=monthly_source.source_month,
                 source_path=monthly_source.file_path,
-                destination_path=trip_destination_path,
+                destination_table=configuration.bronze_trip_table,
                 row_count=row_count,
             )
         )
@@ -126,23 +114,23 @@ def ingest_bronze_dataset(
     )
 
     def write_taxi_zone_frame(
-        cached_frame: DataFrame,
+        frame: DataFrame,
     ) -> None:
-        write_bronze_taxi_zones(
-            cached_frame,
-            taxi_zone_destination_path,
+        write_managed_bronze_taxi_zones(
+            frame,
+            configuration.bronze_taxi_zone_table,
         )
 
     taxi_zone_row_count = _materialize_and_write(
         taxi_zone_frame,
         write_taxi_zone_frame,
-        use_cache=use_cache,
     )
 
-    return BronzeIngestionResult(
+    return DatabricksBronzeIngestionResult(
         ingested_at_utc=ingested_at_utc,
         resolved_sources=resolved_sources,
+        configuration=configuration,
         monthly_trip_writes=tuple(monthly_trip_writes),
-        taxi_zone_destination_path=taxi_zone_destination_path,
+        taxi_zone_destination_table=configuration.bronze_taxi_zone_table,
         taxi_zone_row_count=taxi_zone_row_count,
     )

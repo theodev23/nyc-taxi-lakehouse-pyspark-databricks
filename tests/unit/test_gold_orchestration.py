@@ -204,6 +204,48 @@ def test_materialize_and_write_month_releases_cached_frames(
     ]
 
 
+def test_materialize_and_write_month_without_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Databricks execution should write Gold without Spark caching."""
+    specification = load_gold_analytics_specification(PROJECT_SPECIFICATION_PATH)
+
+    trip_metrics = FakeFrame(
+        "trip_metrics",
+        row_count=101,
+    )
+    daily_metrics = FakeFrame(
+        "daily_metrics",
+        row_count=31,
+    )
+
+    analytics_frames = SimpleNamespace(
+        trip_metrics=trip_metrics,
+        daily_metrics=daily_metrics,
+    )
+
+    monkeypatch.setattr(
+        orchestration,
+        "write_gold_month",
+        lambda frame, destination_path, source_month: None,
+    )
+
+    result = orchestration._materialize_and_write_month(
+        analytics_frames,
+        specification,
+        "2024-01",
+        use_cache=False,
+    )
+
+    assert result == (101, 31)
+    assert trip_metrics.cache_count == 0
+    assert daily_metrics.cache_count == 0
+    assert trip_metrics.count_count == 1
+    assert daily_metrics.count_count == 1
+    assert trip_metrics.unpersist_count == 0
+    assert daily_metrics.unpersist_count == 0
+
+
 def test_materialize_and_write_month_releases_after_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -258,6 +300,75 @@ def test_materialize_and_write_month_releases_after_failure(
     assert daily_metrics.unpersist_count == 1
     assert trip_metrics.unpersist_blocking_values == [True]
     assert daily_metrics.unpersist_blocking_values == [True]
+
+
+def test_build_gold_dataset_propagates_disabled_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Databricks Gold execution should avoid and propagate caching."""
+    specification = load_gold_analytics_specification(PROJECT_SPECIFICATION_PATH)
+    zones = FakeFrame("zones")
+    received_cache_values: list[bool] = []
+
+    monkeypatch.setattr(
+        orchestration,
+        "load_gold_analytics_specification",
+        lambda path: specification,
+    )
+    monkeypatch.setattr(
+        orchestration,
+        "load_silver_source_months",
+        lambda spark, source_path: ("2024-01",),
+    )
+    monkeypatch.setattr(
+        orchestration,
+        "load_taxi_zones",
+        lambda spark, source_path: zones,
+    )
+    monkeypatch.setattr(
+        orchestration,
+        "_validate_taxi_zone_reference",
+        lambda frame: 265,
+    )
+    monkeypatch.setattr(
+        orchestration,
+        "load_silver_accepted_month",
+        lambda spark, source_path, source_month: FakeFrame("silver"),
+    )
+    monkeypatch.setattr(
+        orchestration,
+        "build_gold_analytics_frames",
+        lambda frame, received_zones, spec: SimpleNamespace(
+            trip_metrics=FakeFrame("trip_metrics"),
+            daily_metrics=FakeFrame("daily_metrics"),
+        ),
+    )
+
+    def fake_materialize(
+        frames: SimpleNamespace,
+        received_specification: Any,
+        source_month: str,
+        *,
+        use_cache: bool = True,
+    ) -> tuple[int, int]:
+        received_cache_values.append(use_cache)
+        return (100, 31)
+
+    monkeypatch.setattr(
+        orchestration,
+        "_materialize_and_write_month",
+        fake_materialize,
+    )
+
+    orchestration.build_gold_dataset(
+        object(),
+        PROJECT_SPECIFICATION_PATH,
+        use_cache=False,
+    )
+
+    assert zones.cache_count == 0
+    assert zones.unpersist_count == 0
+    assert received_cache_values == [False]
 
 
 def test_build_gold_dataset_orchestrates_all_months(
@@ -353,10 +464,13 @@ def test_build_gold_dataset_orchestrates_all_months(
         frames: SimpleNamespace,
         received_specification: Any,
         source_month: str,
+        *,
+        use_cache: bool = True,
     ) -> tuple[int, int]:
         events.append(f"materialize:{source_month}")
         assert frames is analytics_frames[source_month]
         assert received_specification is specification
+        assert use_cache is True
         return monthly_counts[source_month]
 
     monkeypatch.setattr(
