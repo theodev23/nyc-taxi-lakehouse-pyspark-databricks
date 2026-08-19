@@ -145,6 +145,49 @@ def test_materialize_split_and_write_releases_cached_frame(
     ]
 
 
+def test_materialize_split_and_write_without_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Databricks execution should process Silver without Spark caching."""
+    specification = load_silver_quality_specification(PROJECT_SPECIFICATION_PATH)
+    annotated_frame = FakeFrame("annotated")
+    accepted_frame = FakeFrame(
+        "accepted",
+        row_count=101,
+    )
+    rejected_frame = FakeFrame(
+        "rejected",
+        row_count=2,
+    )
+
+    monkeypatch.setattr(
+        orchestration,
+        "split_silver_quality_rows",
+        lambda frame, received_specification: SimpleNamespace(
+            accepted=accepted_frame,
+            rejected=rejected_frame,
+        ),
+    )
+    monkeypatch.setattr(
+        orchestration,
+        "write_silver_trip_month",
+        lambda frame, destination_path, source_month: None,
+    )
+
+    result = orchestration._materialize_split_and_write(
+        annotated_frame,
+        specification,
+        "2024-01",
+        use_cache=False,
+    )
+
+    assert result == (101, 2)
+    assert annotated_frame.cache_count == 0
+    assert annotated_frame.unpersist_count == 0
+    assert accepted_frame.count_count == 1
+    assert rejected_frame.count_count == 1
+
+
 def test_materialize_split_and_write_releases_after_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -203,6 +246,65 @@ def test_materialize_split_and_write_releases_after_failure(
     assert annotated_frame.cache_count == 1
     assert annotated_frame.unpersist_count == 1
     assert annotated_frame.unpersist_blocking_values == [True]
+
+
+def test_build_silver_dataset_propagates_disabled_cache(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Databricks Silver execution should propagate disabled caching."""
+    specification = load_silver_quality_specification(PROJECT_SPECIFICATION_PATH)
+    annotated_frame = FakeFrame("annotated")
+    received_cache_values: list[bool] = []
+
+    monkeypatch.setattr(
+        orchestration,
+        "load_silver_quality_specification",
+        lambda path: specification,
+    )
+    monkeypatch.setattr(
+        orchestration,
+        "load_bronze_source_months",
+        lambda spark, source_path: ("2024-01",),
+    )
+    monkeypatch.setattr(
+        orchestration,
+        "load_bronze_zone_ids",
+        lambda spark, source_path: (1, 2, 3),
+    )
+    monkeypatch.setattr(
+        orchestration,
+        "load_bronze_trip_month",
+        lambda spark, source_path, source_month: FakeFrame("bronze"),
+    )
+    monkeypatch.setattr(
+        orchestration,
+        "annotate_silver_quality",
+        lambda frame, source_month, zone_ids, spec: annotated_frame,
+    )
+
+    def fake_materialize(
+        frame: FakeFrame,
+        received_specification: Any,
+        source_month: str,
+        *,
+        use_cache: bool = True,
+    ) -> tuple[int, int]:
+        received_cache_values.append(use_cache)
+        return (100, 1)
+
+    monkeypatch.setattr(
+        orchestration,
+        "_materialize_split_and_write",
+        fake_materialize,
+    )
+
+    orchestration.build_silver_dataset(
+        object(),
+        PROJECT_SPECIFICATION_PATH,
+        use_cache=False,
+    )
+
+    assert received_cache_values == [False]
 
 
 def test_build_silver_dataset_orchestrates_all_months(
@@ -287,10 +389,13 @@ def test_build_silver_dataset_orchestrates_all_months(
         frame: FakeFrame,
         received_specification: Any,
         source_month: str,
+        *,
+        use_cache: bool = True,
     ) -> tuple[int, int]:
         events.append(f"materialize:{source_month}")
         assert frame is annotated_frames[source_month]
         assert received_specification is specification
+        assert use_cache is True
         return monthly_counts[source_month]
 
     monkeypatch.setattr(

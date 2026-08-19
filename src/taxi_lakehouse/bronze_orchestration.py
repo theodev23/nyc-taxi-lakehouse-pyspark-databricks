@@ -51,15 +51,18 @@ class BronzeIngestionResult:
 def _materialize_and_write(
     frame: DataFrame,
     write_operation: Callable[[DataFrame], None],
+    *,
+    use_cache: bool = True,
 ) -> int:
-    """Cache, count, write, and release one source DataFrame."""
-    cached_frame = frame.cache()
+    """Count and write one source DataFrame with optional caching."""
+    materialized_frame = frame.cache() if use_cache else frame
 
     try:
-        row_count = cached_frame.count()
-        write_operation(cached_frame)
+        row_count = materialized_frame.count()
+        write_operation(materialized_frame)
     finally:
-        cached_frame.unpersist(blocking=True)
+        if use_cache:
+            materialized_frame.unpersist(blocking=True)
 
     return row_count
 
@@ -70,6 +73,8 @@ def ingest_bronze_dataset(
     landing_directory: Path,
     bronze_root: Path,
     ingested_at_utc: datetime,
+    *,
+    use_cache: bool = True,
 ) -> BronzeIngestionResult:
     """Load all validated sources into the Bronze Delta layer."""
     format_utc_timestamp_ntz(ingested_at_utc)
@@ -101,6 +106,7 @@ def ingest_bronze_dataset(
         row_count = _materialize_and_write(
             trip_frame,
             write_trip_frame,
+            use_cache=use_cache,
         )
 
         monthly_trip_writes.append(
@@ -130,6 +136,7 @@ def ingest_bronze_dataset(
     taxi_zone_row_count = _materialize_and_write(
         taxi_zone_frame,
         write_taxi_zone_frame,
+        use_cache=use_cache,
     )
 
     return BronzeIngestionResult(

@@ -53,13 +53,15 @@ def _materialize_split_and_write(
     annotated_frame: DataFrame,
     specification: SilverQualitySpecification,
     source_month: str,
+    *,
+    use_cache: bool = True,
 ) -> tuple[int, int]:
-    """Cache, count, write, and release one annotated Silver month."""
-    cached_frame = annotated_frame.cache()
+    """Count and write one annotated Silver month with optional caching."""
+    materialized_frame = annotated_frame.cache() if use_cache else annotated_frame
 
     try:
         split = split_silver_quality_rows(
-            cached_frame,
+            materialized_frame,
             specification,
         )
 
@@ -77,7 +79,8 @@ def _materialize_split_and_write(
             source_month,
         )
     finally:
-        cached_frame.unpersist(blocking=True)
+        if use_cache:
+            materialized_frame.unpersist(blocking=True)
 
     return (
         accepted_row_count,
@@ -88,6 +91,8 @@ def _materialize_split_and_write(
 def build_silver_dataset(
     spark: SparkSession,
     specification_path: Path,
+    *,
+    use_cache: bool = True,
 ) -> SilverBuildResult:
     """Build accepted and rejected Silver Delta tables from Bronze."""
     specification = load_silver_quality_specification(specification_path)
@@ -124,6 +129,7 @@ def build_silver_dataset(
             annotated_frame,
             specification,
             source_month,
+            use_cache=use_cache,
         )
 
         monthly_writes.append(

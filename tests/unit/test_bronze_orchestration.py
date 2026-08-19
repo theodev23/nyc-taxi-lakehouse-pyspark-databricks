@@ -131,6 +131,28 @@ def test_materialize_and_write_releases_cached_frame() -> None:
     assert frame.unpersist_blocking_values == [True]
 
 
+def test_materialize_and_write_without_cache() -> None:
+    """Databricks execution should materialize without Spark caching."""
+    frame = FakeFrame(
+        label="january",
+        row_count=123,
+    )
+    written_frames: list[FakeFrame] = []
+
+    result = orchestration._materialize_and_write(
+        frame,
+        written_frames.append,
+        use_cache=False,
+    )
+
+    assert result == 123
+    assert written_frames == [frame]
+    assert frame.cache_count == 0
+    assert frame.count_count == 1
+    assert frame.unpersist_count == 0
+    assert frame.unpersist_blocking_values == []
+
+
 def test_materialize_and_write_releases_frame_after_failure() -> None:
     """A failed write should still release the cached frame."""
     frame = FakeFrame(
@@ -155,6 +177,101 @@ def test_materialize_and_write_releases_frame_after_failure() -> None:
     assert frame.count_count == 1
     assert frame.unpersist_count == 1
     assert frame.unpersist_blocking_values == [True]
+
+
+def test_ingest_bronze_dataset_propagates_disabled_cache(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Databricks Bronze execution should propagate disabled caching."""
+    manifest_path = tmp_path / "source_manifest.json"
+    landing_directory = tmp_path / "landing"
+    bronze_root = tmp_path / "bronze"
+    ingested_at_utc = datetime(
+        2026,
+        8,
+        6,
+        8,
+        30,
+        tzinfo=UTC,
+    )
+
+    source_files, resolved_sources = build_resolved_sources(
+        landing_directory,
+    )
+    trip_frame = FakeFrame("trip", 10)
+    taxi_zone_frame = FakeFrame("zones", 265)
+    received_cache_values: list[bool] = []
+
+    monkeypatch.setattr(
+        orchestration,
+        "format_utc_timestamp_ntz",
+        lambda value: "2026-08-06 08:30:00.000000",
+    )
+    monkeypatch.setattr(
+        orchestration,
+        "load_source_files",
+        lambda path: source_files,
+    )
+    monkeypatch.setattr(
+        orchestration,
+        "resolve_bronze_sources",
+        lambda files, directory: resolved_sources,
+    )
+    monkeypatch.setattr(
+        orchestration,
+        "load_bronze_trip_source",
+        lambda spark, source, timestamp: trip_frame,
+    )
+    monkeypatch.setattr(
+        orchestration,
+        "load_bronze_taxi_zone_source",
+        lambda spark, source, path, timestamp: taxi_zone_frame,
+    )
+    monkeypatch.setattr(
+        orchestration,
+        "write_bronze_trip_month",
+        lambda frame, destination_path, source_month: None,
+    )
+    monkeypatch.setattr(
+        orchestration,
+        "write_bronze_taxi_zones",
+        lambda frame, destination_path: None,
+    )
+
+    original_materialize = orchestration._materialize_and_write
+
+    def record_materialize(
+        frame: FakeFrame,
+        write_operation: Any,
+        *,
+        use_cache: bool = True,
+    ) -> int:
+        received_cache_values.append(use_cache)
+        return original_materialize(
+            frame,
+            write_operation,
+            use_cache=use_cache,
+        )
+
+    monkeypatch.setattr(
+        orchestration,
+        "_materialize_and_write",
+        record_materialize,
+    )
+
+    orchestration.ingest_bronze_dataset(
+        object(),
+        manifest_path,
+        landing_directory,
+        bronze_root,
+        ingested_at_utc,
+        use_cache=False,
+    )
+
+    assert received_cache_values == [False, False, False]
+    assert trip_frame.cache_count == 0
+    assert taxi_zone_frame.cache_count == 0
 
 
 def test_ingest_bronze_dataset_orchestrates_all_sources(
