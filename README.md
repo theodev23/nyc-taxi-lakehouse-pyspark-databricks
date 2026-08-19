@@ -4,9 +4,9 @@ A reproducible Data Engineering project based on NYC TLC Yellow Taxi data.
 
 The project currently provides a validated source-data foundation, a
 deterministic stratified sample, automated data profiling, command-line tools,
-tests, continuous integration, and production-style Bronze and Silver Delta
-Lake layers. Future phases will extend this foundation into Gold analytical
-models and Databricks-compatible delivery.
+tests, continuous integration, and production-style Bronze, Silver, and Gold
+Delta Lake layers. The remaining project phase focuses on
+Databricks-compatible delivery.
 
 ## Current status
 
@@ -33,11 +33,16 @@ Completed:
 - automatic Bronze source-month discovery for Silver processing;
 - idempotent monthly Silver partition replacement;
 - memory-conscious local Silver execution with bounded Spark parallelism;
-- end-to-end Silver validation across all 20,332,093 trip rows.
+- end-to-end Silver validation across all 20,332,093 trip rows;
+- versioned Gold analytical contract;
+- Gold metrics aggregated by date, pickup zone, and payment type;
+- daily Gold business metrics;
+- idempotent monthly Gold Delta replacement;
+- validated preservation of all 20,325,497 accepted Silver trips;
+- versioned Spark SQL analytical and validation queries.
 
 Planned:
 
-- Gold analytical tables and business metrics;
 - Databricks-compatible execution and documentation.
 
 ## Dataset
@@ -83,8 +88,12 @@ flowchart LR
     L --> M[Silver accepted Delta trips]
     L --> N[Silver rejected Delta trips]
 
-    M --> O[Future Gold analytical models]
-    N --> O
+    R[data/gold_analytics_spec.json] --> O[Gold analytical transformation]
+    M --> O
+    H --> O
+
+    O --> P[Gold trip metrics by date, pickup zone, and payment type]
+    O --> S[Gold daily metrics]
 ```
 
 ## Deterministic sampling
@@ -171,6 +180,7 @@ hide problems present in the source data.
 |---|---|
 | `data/source_manifest.json` | Metadata and integrity information for raw sources |
 | `data/silver_quality_spec.json` | Versioned Silver data-quality contract |
+| `data/gold_analytics_spec.json` | Versioned Gold analytical contract |
 | `data/sample/sample_spec.json` | Deterministic sampling contract |
 | `data/sample/sample_manifest.json` | Sample metadata and checksums |
 | `data/sample/sample_profile.json` | Deterministic sample profile |
@@ -278,6 +288,81 @@ Local Silver execution uses two Spark worker threads to keep Delta write
 parallelism compatible with the memory available in the development
 environment.
 
+## Gold Delta layer
+
+The command `taxi-lakehouse-build-gold` reads accepted Silver trips and the
+Bronze taxi-zone reference, then applies the versioned analytical contract in
+`data/gold_analytics_spec.json`.
+
+Two analytical Delta tables are produced:
+
+| Delta table | Default path | Active rows |
+|---|---|---:|
+| Trip metrics | `data/lakehouse/gold/trip_metrics_by_date_pickup_zone_payment` | 128,335 |
+| Daily metrics | `data/lakehouse/gold/daily_trip_metrics` | 182 |
+
+The trip-metrics grain is:
+
+- `_source_month`;
+- `pickup_date`;
+- `pickup_location_id`;
+- `payment_type`.
+
+Pickup geography is enriched from the Bronze taxi-zone reference through
+`pickup_borough`, `pickup_zone`, and `pickup_service_zone`.
+
+The daily table uses the simpler grain `_source_month` plus `pickup_date`.
+
+Both outputs calculate the same nine business metrics:
+
+- `trip_count`;
+- `quality_flagged_trip_count`;
+- `trip_distance_sum`;
+- `trip_distance_avg`;
+- `trip_duration_minutes_avg`;
+- `fare_amount_sum`;
+- `tip_amount_sum`;
+- `total_amount_sum`;
+- `total_amount_avg`.
+
+The Gold build validates that the taxi-zone reference is non-empty and that
+`LocationID` values are non-null and unique before analytical joins are
+performed. Both Gold tables are partitioned by `_source_month` and replace only
+the requested monthly partition through Delta Lake `replaceWhere`.
+
+The complete January-through-June 2024 build produced:
+
+| Source month | Trip-metric rows | Daily rows |
+|---|---:|---:|
+| 2024-01 | 20,356 | 31 |
+| 2024-02 | 19,296 | 29 |
+| 2024-03 | 22,378 | 31 |
+| 2024-04 | 21,602 | 30 |
+| 2024-05 | 22,745 | 31 |
+| 2024-06 | 21,958 | 30 |
+| **Total** | **128,335** | **182** |
+
+Independent validation confirmed that both analytical tables preserve exactly
+20,325,497 accepted Silver trips when `trip_count` is summed. They also preserve
+the same 2,657,576 accepted trips carrying at least one retained quality flag.
+No duplicate analytical grains or null grain values were found.
+
+The versioned file `sql/gold_analytics_queries.sql` contains Spark SQL examples
+for:
+
+- daily trip activity and revenue;
+- highest-volume pickup zones;
+- metrics by TLC payment-type code;
+- monthly retained-quality-flag rates;
+- row-preservation validation;
+- analytical-grain uniqueness validation.
+
+All eight SQL statements in the file, including the two Delta temporary-view
+definitions, were executed successfully against the complete local Gold layer.
+
+Local Gold execution uses two Spark worker threads to keep aggregation and
+Delta-write parallelism bounded in the development environment.
+
 ## Requirements
 
 - Python 3.12;
@@ -315,6 +400,7 @@ taxi-lakehouse-generate-sample --help
 taxi-lakehouse-profile-sample --help
 taxi-lakehouse-ingest-bronze --help
 taxi-lakehouse-build-silver --help
+taxi-lakehouse-build-gold --help
 ```
 
 Generate the deterministic sample from the local landing files:
@@ -358,6 +444,19 @@ taxi-lakehouse-build-silver \
   --specification data/silver_quality_spec.json
 ```
 
+Build the Gold analytical Delta tables from accepted Silver trips:
+
+```bash
+taxi-lakehouse-build-gold
+```
+
+Override the default Gold analytical specification when required:
+
+```bash
+taxi-lakehouse-build-gold \
+  --specification data/gold_analytics_spec.json
+```
+
 ## Tests and code quality
 
 Run the complete test suite:
@@ -373,7 +472,7 @@ ruff check .
 ruff format --check .
 ```
 
-At the current project stage, the suite contains 143 tests.
+At the current project stage, the suite contains 177 tests.
 
 ## Continuous integration
 
@@ -398,9 +497,11 @@ The workflow:
 │   ├── landing/                     # Local source files excluded from Git
 │   ├── lakehouse/                   # Local Delta tables excluded from Git
 │   │   ├── bronze/
-│   │   └── silver/
+│   │   ├── silver/
+│   │   └── gold/
 │   ├── source_manifest.json
 │   ├── silver_quality_spec.json
+│   ├── gold_analytics_spec.json
 │   └── sample
 │       ├── sample_spec.json
 │       ├── sample_manifest.json
@@ -431,7 +532,15 @@ The workflow:
 │   ├── silver_quality_specification.py
 │   ├── silver_transformation.py
 │   ├── silver_writing.py
+│   ├── gold_analytics_specification.py
+│   ├── gold_cli.py
+│   ├── gold_loading.py
+│   ├── gold_orchestration.py
+│   ├── gold_transformation.py
+│   ├── gold_writing.py
 │   └── spark_session.py
+├── sql
+│   └── gold_analytics_queries.sql
 ├── tests
 │   ├── integration/
 │   └── unit/
@@ -441,8 +550,8 @@ The workflow:
 
 The package separates acquisition, sampling, profiling, shared Spark session
 construction, Bronze ingestion, shared quality rules, Silver specification
-loading, quality transformation, Delta writing, orchestration, and
-command-line execution so that each component can be tested independently.
+loading, quality transformation, Gold analytics, Delta writing, orchestration,
+and command-line execution so that each component can be tested independently.
 
 ## Roadmap
 
@@ -471,9 +580,9 @@ command-line execution so that each component can be tested independently.
 
 ### Phase 4 — Gold layer
 
-- [ ] Build analytical tables and business KPIs.
-- [ ] Aggregate trips by date, location, and payment type.
-- [ ] Document Spark SQL queries and validation results.
+- [x] Build analytical tables and business KPIs.
+- [x] Aggregate trips by date, pickup location, and payment type.
+- [x] Document Spark SQL queries and validation results.
 
 ### Phase 5 — Databricks delivery
 
